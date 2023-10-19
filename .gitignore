@@ -1,0 +1,68 @@
+# Ignore database files
+*.sqlite3
+*.db
+
+# Ignore static and media files (assumes you use collectstatic and/or a separate storage service)
+/static/
+/media/
+
+# Ignore virtual environment
+venv/
+.venv/
+
+# Ignore log files
+*.log
+*.log.*
+log/
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore development-specific files
+*.bak
+*.swp
+
+# Ignore configuration files with sensitive information (e.g., settings_local.py)
+*.secret
+
+# Ignore generated migration files (only if you don't want to include them in version control)
+**/migrations/*.py
+
+# Ignore IDE and code editor files
+.vscode/
+.idea/
+*.suo
+*.sln
+__pycache__/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore Python byte-compiled files (e.g., __pycache__)
+__pycache__/
+
+# Ignore compiled Python files
+*.pyc
+*.pyo
+
+# Ignore local environment files
+.env
+
+# Ignore coverage reports
+.coverage
+
+# Ignore database backups
+*.dump
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore node_modules directory
+node_modules/
+
+# Ignore Docker and Docker Compose files (if you're not using them)
+Dockerfile
+docker-compose.yml
