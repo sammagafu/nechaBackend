@@ -1,6 +1,6 @@
 from rest_framework import viewsets
 from .models import Category, Subcategory
-from .serializers import CategorySerializer, SubcategorySerializer
+from .serializers import CategorySerializer, SubCategorySerializer
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
@@ -8,4 +8,4 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 class SubcategoryViewSet(viewsets.ModelViewSet):
     queryset = Subcategory.objects.all()
-    serializer_class = SubcategorySerializer
+    serializer_class = SubCategorySerializer

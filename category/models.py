@@ -13,9 +13,11 @@ class Category(models.Model):
     def __str__(self):
         return self.name
     
-    def save(self):
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
         self.slug = slugify(self.name)
-        super(Category,self).save()
+        return super().save()
 
 class Subcategory(models.Model):
     name = models.CharField(max_length=100)
@@ -29,9 +31,11 @@ class Subcategory(models.Model):
     def __str__(self):
         return self.name
     
-    def save(self):
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
         self.slug = slugify(self.name)
-        super(Category,self).save()
+        return super().save()
     
 
 
