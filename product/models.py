@@ -14,7 +14,7 @@ class Product(models.Model):
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
     category = models.ForeignKey('category.Category', on_delete=models.CASCADE)
-    cover = ResizedImageField(upload_to = 'product/images/%Y/%m/%d',verbose_name=_("Products image"),size=[800, 900], crop=['middle', 'center'],null=True,blank=True)
+    cover = ResizedImageField(upload_to = 'product/images/%Y/%m/%d',verbose_name=_("Products image"),size=[900, 1000], crop=['middle', 'center'],null=True,blank=True)
 
     # cover = models.ImageField(upload_to='products/', null=True, blank=True)
 
@@ -30,7 +30,7 @@ class Product(models.Model):
     
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    image = ResizedImageField(upload_to = 'product/images/%Y/%m/%d',verbose_name=_("Products image"),size=[800, 900], crop=['middle', 'center'],null=True,blank=True)
+    image = ResizedImageField(upload_to = 'product/images/%Y/%m/%d',verbose_name=_("Products image"),size=[900, 1000], crop=['middle', 'center'],null=True,blank=True)
 
 class ProductReview(models.Model):     
     product = models.ForeignKey(Product, verbose_name=_("Review"), on_delete=models.CASCADE)
