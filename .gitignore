@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/tmp/
+
+# Test / coverage
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Go
+vendor/
