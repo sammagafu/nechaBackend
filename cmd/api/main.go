@@ -8,8 +8,10 @@ import (
 	"github.com/nechaafrica/backend/internal/config"
 	"github.com/nechaafrica/backend/internal/database"
 	"github.com/nechaafrica/backend/internal/handler"
+	"github.com/nechaafrica/backend/internal/integration/email"
 	"github.com/nechaafrica/backend/internal/integration/kkooapp"
 	"github.com/nechaafrica/backend/internal/integration/selcom"
+	"github.com/nechaafrica/backend/internal/integration/sms"
 	"github.com/nechaafrica/backend/internal/repository"
 	"github.com/nechaafrica/backend/internal/router"
 	"github.com/nechaafrica/backend/internal/service"
@@ -53,8 +55,43 @@ func main() {
 	alertRepo := repository.NewAlertRepository(db)
 	chatRepo := repository.NewChatRepository(db)
 	webhookRepo := repository.NewWebhookRepository(db)
+	inquiryRepo := repository.NewInquiryRepository(db)
+	guestRequestRepo := repository.NewGuestRequestRepository(db)
+	deliveryZoneRepo := repository.NewDeliveryZoneRepository(db)
+	platformConfigRepo := repository.NewPlatformConfigRepository(db)
 
 	guestStayRepo := repository.NewGuestStayRepository(db)
+
+	influencerRepo := repository.NewInfluencerRepository(db)
+	bookingReferralRepo := repository.NewBookingReferralRepository(db)
+	supplierRepo := repository.NewSupplierRepository(db)
+	catalogueRepo := repository.NewCatalogueRepository(db)
+	commissionRepo := repository.NewCommissionRepository(db)
+	payoutRepo := repository.NewPayoutRepository(db)
+	eventLogRepo := repository.NewEventLogRepository(db)
+	rewardRepo := repository.NewRewardRepository(db)
+
+	if err := service.SeedDefaultCommissionRules(commissionRepo); err != nil {
+		log.Printf("commission rule seed warning: %v", err)
+	}
+
+	emailClient := email.NewClient(email.Config{
+		Enabled:  cfg.Email.Enabled,
+		Host:     cfg.Email.Host,
+		Port:     cfg.Email.Port,
+		Username: cfg.Email.Username,
+		Password: cfg.Email.Password,
+		From:     cfg.Email.From,
+		AdminTo:  cfg.Email.AdminTo,
+	})
+
+	smsClient := sms.NewClient(sms.Config{
+		Enabled: cfg.SMS.Enabled,
+		APIURL:  cfg.SMS.APIURL,
+		APIKey:  cfg.SMS.APIKey,
+		Sender:  cfg.SMS.Sender,
+		AdminTo: cfg.SMS.AdminTo,
+	})
 
 	guestStaySvc := service.NewGuestStayService(guestStayRepo, hotelRepo)
 	authSvc := service.NewAuthService(userRepo, jwtMgr, guestStaySvc)
@@ -64,7 +101,12 @@ func main() {
 	notificationSvc := service.NewNotificationService(notificationRepo)
 	alertSvc := service.NewAlertService(alertRepo)
 	webhookSvc := service.NewWebhookService(webhookRepo, cfg.Webhook.InboundSecret)
-	eventSvc := service.NewEventService(notificationSvc, webhookSvc, userRepo)
+	eventSvc := service.NewEventService(notificationSvc, webhookSvc, userRepo, emailClient, smsClient)
+	commissionSvc := service.NewCommissionService(commissionRepo, influencerRepo, eventLogRepo)
+	payoutSvc := service.NewPayoutService(commissionRepo, payoutRepo, eventLogRepo)
+	eventSvc.SetCommissionService(commissionSvc)
+	eventSvc.SetRewardRepository(rewardRepo)
+	commerceSvc := service.NewCommerceService(influencerRepo, bookingReferralRepo, supplierRepo, catalogueRepo, commissionRepo, rewardRepo, hotelRepo, eventLogRepo)
 	chatSvc := service.NewChatService(chatRepo, hotelRepo, userRepo, eventSvc)
 	reservationSvc := service.NewReservationService(hotelRepo, reservationRepo, kkClient, eventSvc, guestStaySvc)
 
@@ -82,8 +124,16 @@ func main() {
 	}
 
 	paymentSvc := service.NewPaymentService(cfg.Selcom, selcomClient, orderRepo, hotelRepo, eventSvc)
-	orderSvc := service.NewOrderService(hotelRepo, orderRepo, kkClient, eventSvc, paymentSvc, guestStaySvc)
-	adminSvc := service.NewAdminService(hotelRepo, orderRepo, reservationRepo, eventSvc, guestStaySvc)
+	platformSvc := service.NewPlatformService(deliveryZoneRepo, platformConfigRepo)
+	orderSvc := service.NewOrderService(hotelRepo, orderRepo, kkClient, eventSvc, paymentSvc, guestStaySvc, platformSvc, influencerRepo, bookingReferralRepo)
+	adminSvc := service.NewAdminService(hotelRepo, catalogRepo, orderRepo, reservationRepo, eventSvc, guestStaySvc)
+	partnerSvc := service.NewPartnerService(userRepo, adminSvc)
+	inquirySvc := service.NewInquiryService(inquiryRepo, eventSvc)
+	guestRequestSvc := service.NewGuestRequestService(guestRequestRepo, hotelRepo, eventSvc)
+
+	// Scheduled background jobs: founding-tier auto-transition + inventory reservation sweep.
+	maintenanceSvc := service.NewMaintenanceService(hotelRepo, platformConfigRepo, eventLogRepo, db)
+	maintenanceSvc.Start()
 
 	app := fiber.New(fiber.Config{
 		AppName: "NechaAfrica API",
@@ -97,7 +147,11 @@ func main() {
 		Order:          handler.NewOrderHandler(orderSvc),
 		Admin:          handler.NewAdminHandler(adminSvc, authSvc, importSvc),
 		Messaging:      handler.NewMessagingHandler(notificationSvc, alertSvc, chatSvc, webhookSvc),
+		Inquiry:        handler.NewInquiryHandler(inquirySvc),
+		Platform:       handler.NewPlatformHandler(platformSvc, guestRequestSvc),
 		Payment:        handler.NewPaymentHandler(paymentSvc, cfg.Selcom),
+		Commerce:       handler.NewCommerceHandler(commerceSvc, payoutSvc),
+		Partner:        handler.NewPartnerHandler(partnerSvc),
 		JWT:            jwtMgr,
 		AllowedOrigins: cfg.Server.AllowedOrigin,
 		DB:             db,

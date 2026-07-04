@@ -70,14 +70,22 @@ type AdminHotelResponse struct {
 	City         string   `json:"city"`
 	Location     string   `json:"location"`
 	Country      string   `json:"country"`
-	Zone         string   `json:"zone"`
-	Phone        string   `json:"phone"`
+	Zone           string   `json:"zone"`
+	GoogleMapsURL  string   `json:"google_maps_url"`
+	Latitude       *float64 `json:"latitude"`
+	Longitude      *float64 `json:"longitude"`
+	Phone          string   `json:"phone"`
+	Email          string   `json:"email"`
 	Initials     string   `json:"initials"`
 	LogoURL      string   `json:"logo_url"`
 	ReferralCode string   `json:"referral_code"`
 	Services     []string `json:"services"`
 	IsVerified   bool     `json:"is_verified"`
 	KkooappID    string   `json:"kkooapp_id"`
+	PartnerType             string  `json:"partner_type"`
+	CommissionTier          string  `json:"commission_tier"`
+	CommissionTierStartDate *string `json:"commission_tier_start_date,omitempty"`
+	SelcomPayoutAccount     string  `json:"selcom_payout_account,omitempty"`
 	IsActive     bool     `json:"is_active"`
 	ProductCount int64    `json:"product_count"`
 	CreatedAt    string   `json:"created_at"`
@@ -92,14 +100,21 @@ type CreateHotelRequest struct {
 	City         string   `json:"city"`
 	Location     string   `json:"location"`
 	Country      string   `json:"country"`
-	Zone         string   `json:"zone"`
-	Phone        string   `json:"phone"`
+	Zone           string   `json:"zone"`
+	GoogleMapsURL  string   `json:"google_maps_url"`
+	Latitude       *float64 `json:"latitude"`
+	Longitude      *float64 `json:"longitude"`
+	Phone          string   `json:"phone"`
+	Email          string   `json:"email"`
 	Initials     string   `json:"initials"`
 	LogoURL      string   `json:"logo_url"`
 	ReferralCode string   `json:"referral_code"`
 	Services     []string `json:"services"`
 	IsVerified   bool     `json:"is_verified"`
 	KkooappID    string   `json:"kkooapp_id"`
+	PartnerType         string `json:"partner_type"`
+	CommissionTier      string `json:"commission_tier"`
+	SelcomPayoutAccount string `json:"selcom_payout_account"`
 }
 
 type UpdateHotelRequest struct {
@@ -111,14 +126,21 @@ type UpdateHotelRequest struct {
 	City         *string  `json:"city"`
 	Location     *string  `json:"location"`
 	Country      *string  `json:"country"`
-	Zone         *string  `json:"zone"`
-	Phone        *string  `json:"phone"`
+	Zone          *string   `json:"zone"`
+	GoogleMapsURL *string   `json:"google_maps_url"`
+	Latitude      *float64  `json:"latitude"`
+	Longitude     *float64  `json:"longitude"`
+	Phone         *string   `json:"phone"`
+	Email         *string   `json:"email"`
 	Initials     *string  `json:"initials"`
 	LogoURL      *string  `json:"logo_url"`
 	ReferralCode *string  `json:"referral_code"`
 	Services     []string `json:"services"`
 	IsVerified   *bool    `json:"is_verified"`
 	KkooappID    *string  `json:"kkooapp_id"`
+	PartnerType         *string `json:"partner_type"`
+	CommissionTier      *string `json:"commission_tier"`
+	SelcomPayoutAccount *string `json:"selcom_payout_account"`
 	IsActive     *bool    `json:"is_active"`
 }
 
@@ -131,13 +153,14 @@ type AdminProductResponse struct {
 	Description string `json:"description"`
 	Category    string `json:"category"`
 	Badge       string `json:"badge"`
-	Price       int64  `json:"price"`
-	Currency    string `json:"currency"`
-	ImageURL    string `json:"image_url"`
-	Stock       int    `json:"stock"`
-	IsFeatured  bool   `json:"is_featured"`
-	IsActive    bool   `json:"is_active"`
-	CreatedAt   string `json:"created_at"`
+	Price       int64    `json:"price"`
+	Currency    string   `json:"currency"`
+	ImageURL    string   `json:"image_url"`
+	Images      []string `json:"images"`
+	Stock       int      `json:"stock"`
+	IsFeatured  bool     `json:"is_featured"`
+	IsActive    bool     `json:"is_active"`
+	CreatedAt   string   `json:"created_at"`
 }
 
 type CreateProductRequest struct {
@@ -147,11 +170,12 @@ type CreateProductRequest struct {
 	Description string `json:"description"`
 	Category    string `json:"category" validate:"required"`
 	Badge       string `json:"badge"`
-	Price       int64  `json:"price" validate:"required"`
-	Currency    string `json:"currency"`
-	ImageURL    string `json:"image_url"`
-	Stock       int    `json:"stock"`
-	IsFeatured  bool   `json:"is_featured"`
+	Price       int64    `json:"price" validate:"required"`
+	Currency    string   `json:"currency"`
+	ImageURL    string   `json:"image_url"`
+	Images      []string `json:"images"`
+	Stock       int      `json:"stock"`
+	IsFeatured  bool     `json:"is_featured"`
 }
 
 type UpdateProductRequest struct {
@@ -161,12 +185,13 @@ type UpdateProductRequest struct {
 	Description *string `json:"description"`
 	Category    *string `json:"category"`
 	Badge       *string `json:"badge"`
-	Price       *int64  `json:"price"`
-	Currency    *string `json:"currency"`
-	ImageURL    *string `json:"image_url"`
-	Stock       *int    `json:"stock"`
-	IsFeatured  *bool   `json:"is_featured"`
-	IsActive    *bool   `json:"is_active"`
+	Price       *int64   `json:"price"`
+	Currency    *string  `json:"currency"`
+	ImageURL    *string  `json:"image_url"`
+	Images      []string `json:"images"`
+	Stock       *int     `json:"stock"`
+	IsFeatured  *bool    `json:"is_featured"`
+	IsActive    *bool    `json:"is_active"`
 }
 
 type AdminOrderResponse struct {

@@ -7,6 +7,7 @@ type PartnerHotelCard struct {
 	Location string `json:"location"`
 	Initials string `json:"initials"`
 	Slug     string `json:"slug"`
+	LogoURL  string `json:"logo_url"`
 }
 
 type PartnersLandingResponse struct {

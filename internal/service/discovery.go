@@ -22,6 +22,18 @@ func NewDiscoveryService(discovery *repository.DiscoveryRepository, hotels *repo
 	return &DiscoveryService{discovery: discovery, hotels: hotels}
 }
 
+func (s *DiscoveryService) PublicGetBySlug(slug string) (*dto.DiscoveryItemResponse, error) {
+	item, err := s.discovery.FindActiveBySlug(slug)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "discovery item not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load discovery item", apperrors.ErrInternal.Status)
+	}
+	resp := toDiscoveryResponse(item)
+	return &resp, nil
+}
+
 func (s *DiscoveryService) PortalByHotelSlug(slug string) (*dto.DiscoveryPortalResponse, error) {
 	hotel, err := s.hotels.FindBySlug(slug)
 	if err != nil {

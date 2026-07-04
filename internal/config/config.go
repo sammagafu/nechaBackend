@@ -14,6 +14,26 @@ type Config struct {
 	Kkooapp  KkooappConfig
 	Selcom   SelcomConfig
 	Webhook  WebhookConfig
+	Email    EmailConfig
+	SMS      SMSConfig
+}
+
+type EmailConfig struct {
+	Enabled  bool
+	Host     string
+	Port     string
+	Username string
+	Password string
+	From     string
+	AdminTo  string
+}
+
+type SMSConfig struct {
+	Enabled bool
+	APIURL  string
+	APIKey  string
+	Sender  string
+	AdminTo string
 }
 
 type WebhookConfig struct {
@@ -120,6 +140,22 @@ func Load() *Config {
 		},
 		Webhook: WebhookConfig{
 			InboundSecret: getEnv("WEBHOOK_INBOUND_SECRET", ""),
+		},
+		Email: EmailConfig{
+			Enabled:  getEnv("SMTP_ENABLED", "") == "true",
+			Host:     getEnv("SMTP_HOST", ""),
+			Port:     getEnv("SMTP_PORT", "587"),
+			Username: getEnv("SMTP_USERNAME", ""),
+			Password: getEnv("SMTP_PASSWORD", ""),
+			From:     getEnv("SMTP_FROM", "noreply@necha.africa"),
+			AdminTo:  getEnv("ADMIN_EMAIL", "info@necha.africa"),
+		},
+		SMS: SMSConfig{
+			Enabled: getEnv("SMS_ENABLED", "") == "true",
+			APIURL:  getEnv("SMS_API_URL", ""),
+			APIKey:  getEnv("SMS_API_KEY", ""),
+			Sender:  getEnv("SMS_SENDER", "NECHA"),
+			AdminTo: getEnv("ADMIN_PHONE", ""),
 		},
 	}
 }

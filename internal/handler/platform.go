@@ -1,0 +1,37 @@
+package handler
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/nechaafrica/backend/internal/dto"
+	"github.com/nechaafrica/backend/internal/service"
+	"github.com/nechaafrica/backend/pkg/response"
+)
+
+type PlatformHandler struct {
+	platform      *service.PlatformService
+	guestRequests *service.GuestRequestService
+}
+
+func NewPlatformHandler(platform *service.PlatformService, guestRequests *service.GuestRequestService) *PlatformHandler {
+	return &PlatformHandler{platform: platform, guestRequests: guestRequests}
+}
+
+func (h *PlatformHandler) Settings(c *fiber.Ctx) error {
+	result, err := h.platform.Settings()
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
+}
+
+func (h *PlatformHandler) SubmitGuestRequest(c *fiber.Ctx) error {
+	var req dto.SubmitGuestRequestRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return err
+	}
+	result, err := h.guestRequests.Submit(c.Params("slug"), req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.Created(c, result)
+}

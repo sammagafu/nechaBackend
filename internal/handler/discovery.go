@@ -23,6 +23,14 @@ func (h *DiscoveryHandler) PortalBySlug(c *fiber.Ctx) error {
 	return response.OK(c, result)
 }
 
+func (h *DiscoveryHandler) PublicGetBySlug(c *fiber.Ctx) error {
+	result, err := h.discovery.PublicGetBySlug(c.Params("slug"))
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
+}
+
 func (h *DiscoveryHandler) SubmitEvent(c *fiber.Ctx) error {
 	var req dto.SubmitDiscoveryEventRequest
 	if err := bindAndValidate(c, &req); err != nil {

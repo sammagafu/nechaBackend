@@ -34,6 +34,15 @@ func (r *DiscoveryRepository) FindByID(id uuid.UUID) (*models.DiscoveryItem, err
 	return &item, nil
 }
 
+func (r *DiscoveryRepository) FindActiveBySlug(slug string) (*models.DiscoveryItem, error) {
+	var item models.DiscoveryItem
+	err := r.db.Where("slug = ? AND status = ?", slug, models.DiscoveryStatusActive).First(&item).Error
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
 func (r *DiscoveryRepository) ListAll(section, status string) ([]models.DiscoveryItem, error) {
 	var items []models.DiscoveryItem
 	q := r.db.Model(&models.DiscoveryItem{})

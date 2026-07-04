@@ -57,3 +57,14 @@ func RequireAdmin() fiber.Handler {
 		return c.Next()
 	}
 }
+
+// RequirePartner allows property/partner staff scoped to their own hotel (brief §11).
+func RequirePartner() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		role, _ := c.Locals("user_role").(string)
+		if role != string(jwtmanager.RolePartner) && role != string(jwtmanager.RoleAdmin) {
+			return response.Fail(c, apperrors.ErrForbidden)
+		}
+		return c.Next()
+	}
+}

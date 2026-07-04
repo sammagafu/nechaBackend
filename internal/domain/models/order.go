@@ -14,6 +14,24 @@ const (
 	OrderTypeProduct OrderType = "product"
 )
 
+// Order categories map to the commission table (brief §2.2, §8.1). Every order must be
+// classifiable into exactly one category so the engine knows who is paid and how.
+const (
+	OrderCategoryProduct        = "product"
+	OrderCategoryTour           = "tour"
+	OrderCategoryEvent          = "event"
+	OrderCategoryDiningExternal = "dining_experience"
+	OrderCategorySpaExternal    = "spa_service"
+	OrderCategoryRoomService    = "room_service"
+	OrderCategoryReservation    = "reservation_utility"
+)
+
+// Sales channels; B2C (no hotel premium) is a Phase 2 addition (brief §5.5).
+const (
+	SalesChannelHotelStorefront = "hotel_storefront"
+	SalesChannelB2C             = "b2c"
+)
+
 type OrderStatus string
 
 const (
@@ -46,6 +64,18 @@ type Order struct {
 	PaymentProvider string `json:"payment_provider,omitempty"`
 	PaymentStatus   string `json:"payment_status,omitempty"`
 	PaymentRef      string `gorm:"index" json:"payment_ref,omitempty"`
+	// Commission classification + attribution, captured once at placement (brief §3.7).
+	Category     string `gorm:"index;default:product" json:"category"`
+	SalesChannel string `gorm:"index;default:hotel_storefront" json:"sales_channel"`
+	ReferralCode string `gorm:"index" json:"referral_code,omitempty"`
+	// referred_by_influencer_id and referred_by_partner_id are mutually exclusive.
+	ReferredByInfluencerID *uuid.UUID `gorm:"type:uuid;index" json:"referred_by_influencer_id,omitempty"`
+	ReferredByPartnerID    *uuid.UUID `gorm:"type:uuid;index" json:"referred_by_partner_id,omitempty"`
+	// Tax fields exist early (brief §3.16) — populated with real values only once confirmed.
+	TaxAmount int64  `gorm:"default:0" json:"tax_amount"`
+	TaxRate   float64 `gorm:"default:0" json:"tax_rate"`
+	TaxType   string `json:"tax_type,omitempty"`
+	FulfilledAt     *time.Time `json:"fulfilled_at,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt    time.Time   `json:"updated_at"`
 }

@@ -26,9 +26,10 @@ type Product struct {
 	Category    string    `gorm:"not null;index" json:"category"`
 	Badge       string    `json:"badge"`
 	Price       int64     `gorm:"not null" json:"price"`
-	Currency    string    `gorm:"not null;default:TZS" json:"currency"`
-	ImageURL    string    `json:"image_url"`
-	Stock       int       `gorm:"not null;default:0" json:"stock"`
+	Currency    string      `gorm:"not null;default:TZS" json:"currency"`
+	ImageURL    string      `json:"image_url"`
+	Images      StringSlice `gorm:"type:jsonb" json:"images"`
+	Stock       int         `gorm:"not null;default:0" json:"stock"`
 	IsFeatured  bool      `gorm:"default:false" json:"is_featured"`
 	IsActive    bool      `gorm:"default:true" json:"is_active"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -38,6 +39,25 @@ type Product struct {
 func (p *Product) BeforeCreate(tx *gorm.DB) error {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
+	}
+	return nil
+}
+
+type ProductReview struct {
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	ProductID  uuid.UUID `gorm:"type:uuid;not null;index" json:"product_id"`
+	HotelID    uuid.UUID `gorm:"type:uuid;not null;index" json:"hotel_id"`
+	GuestName  string    `gorm:"not null" json:"guest_name"`
+	GuestPhone string    `json:"guest_phone"`
+	Rating     int       `gorm:"not null;default:5" json:"rating"`
+	Body       string    `json:"body"`
+	IsApproved bool      `gorm:"default:true" json:"is_approved"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func (r *ProductReview) BeforeCreate(tx *gorm.DB) error {
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
 	}
 	return nil
 }

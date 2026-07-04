@@ -16,12 +16,15 @@ import (
 )
 
 type OrderService struct {
-	hotels     *repository.HotelRepository
-	orders     *repository.OrderRepository
-	kkooapp    kkooapp.Client
-	events     *EventService
-	payments   *PaymentService
-	guestStays *GuestStayService
+	hotels      *repository.HotelRepository
+	orders      *repository.OrderRepository
+	kkooapp     kkooapp.Client
+	events      *EventService
+	payments    *PaymentService
+	guestStays  *GuestStayService
+	platform    *PlatformService
+	influencers *repository.InfluencerRepository
+	bookings    *repository.BookingReferralRepository
 }
 
 func NewOrderService(
@@ -31,14 +34,41 @@ func NewOrderService(
 	events *EventService,
 	payments *PaymentService,
 	guestStays *GuestStayService,
+	platform *PlatformService,
+	influencers *repository.InfluencerRepository,
+	bookings *repository.BookingReferralRepository,
 ) *OrderService {
 	return &OrderService{
-		hotels:     hotels,
-		orders:     orders,
-		kkooapp:    kkooappClient,
-		events:     events,
-		payments:   payments,
-		guestStays: guestStays,
+		hotels:      hotels,
+		orders:      orders,
+		kkooapp:     kkooappClient,
+		events:      events,
+		payments:    payments,
+		guestStays:  guestStays,
+		platform:    platform,
+		influencers: influencers,
+		bookings:    bookings,
+	}
+}
+
+// resolveAttribution captures referral attribution once, at order placement (brief §3.7).
+// Influencer (by referral code) takes precedence; otherwise an open partner booking referral
+// matched on the customer's phone. The two are mutually exclusive.
+func (s *OrderService) resolveAttribution(order *models.Order, referralCode, customerPhone string) {
+	code := strings.TrimSpace(referralCode)
+	if code != "" {
+		order.ReferralCode = code
+		if s.influencers != nil {
+			if inf, err := s.influencers.FindByReferralCode(code); err == nil {
+				order.ReferredByInfluencerID = &inf.ID
+				return
+			}
+		}
+	}
+	if s.bookings != nil && strings.TrimSpace(customerPhone) != "" {
+		if ref, err := s.bookings.FindActiveByPhone(strings.TrimSpace(customerPhone), time.Now()); err == nil {
+			order.ReferredByPartnerID = &ref.ReferringPartnerID
+		}
 	}
 }
 
@@ -89,6 +119,9 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 		Currency:      "TZS",
 		Items:         items,
 		Notes:         req.Notes,
+		// In-house restaurant/bar fulfilment is a free utility — no commission (brief §2.2).
+		Category:     models.OrderCategoryRoomService,
+		SalesChannel: models.SalesChannelHotelStorefront,
 	}
 
 	if err := s.orders.Create(order); err != nil {
@@ -129,7 +162,7 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
 	}
 	if s.events != nil {
-		s.events.OrderCreated(loaded, hotel.Name)
+		s.events.OrderCreated(loaded, hotel)
 	}
 	if s.guestStays != nil {
 		s.guestStays.RecordFromOrder(loaded, referralFromNotes(req.Notes), models.GuestStaySourceFoodOrder)
@@ -199,7 +232,31 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 			trackStock: trackStock,
 		})
 	}
-	if req.DeliveryFee > 0 {
+	if req.DeliveryFee > 0 || s.platform != nil {
+		zoneCode := strings.TrimSpace(req.DeliveryZoneCode)
+		if zoneCode == "" {
+			zoneCode = hotel.Zone
+		}
+		var expectedFee int64
+		if s.platform != nil {
+			// Prefer distance-based pricing when the guest supplied delivery coordinates and
+			// the hotel has a stored location (brief §4.5); otherwise fall back to flat zone pricing.
+			if req.DeliveryLatitude != nil && req.DeliveryLongitude != nil && hotel.Latitude != nil && hotel.Longitude != nil {
+				expectedFee, err = s.platform.ComputeDeliveryFeeByDistance(hotel, req.DeliveryLatitude, req.DeliveryLongitude, total)
+			} else {
+				expectedFee, err = s.platform.ComputeDeliveryFee(zoneCode, total)
+			}
+			if err != nil {
+				return nil, err
+			}
+		} else if req.DeliveryFee > 0 {
+			expectedFee = req.DeliveryFee
+		}
+		if req.DeliveryFee != expectedFee {
+			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "delivery fee does not match zone pricing", apperrors.ErrBadRequest.Status)
+		}
+		total += expectedFee
+	} else if req.DeliveryFee > 0 {
 		total += req.DeliveryFee
 	}
 
@@ -243,7 +300,17 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 		TotalAmount:   total,
 		Currency:      currency,
 		Notes:         notes,
+		Category:      models.OrderCategoryProduct,
+		SalesChannel:  models.SalesChannelHotelStorefront,
 	}
+	if strings.TrimSpace(req.SalesChannel) == models.SalesChannelB2C {
+		order.SalesChannel = models.SalesChannelB2C
+	}
+	refCode := strings.TrimSpace(req.ReferralCode)
+	if refCode == "" {
+		refCode = referralFromNotes(notes)
+	}
+	s.resolveAttribution(order, refCode, req.CustomerPhone)
 
 	if err := s.orders.Transaction(func(tx *gorm.DB) error {
 		for _, item := range priced {
@@ -311,7 +378,7 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 	}
 
 	if s.events != nil {
-		s.events.OrderCreated(loaded, hotel.Name)
+		s.events.OrderCreated(loaded, hotel)
 	}
 	return resp, nil
 }

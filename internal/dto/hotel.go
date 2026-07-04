@@ -20,16 +20,32 @@ type HotelResponse struct {
 }
 
 type ProductResponse struct {
-	ID          string `json:"id"`
-	Slug        string `json:"slug"`
-	BrandName   string `json:"brand_name"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Category    string `json:"category"`
-	Badge       string `json:"badge"`
-	Price       int64  `json:"price"`
-	Currency    string `json:"currency"`
-	ImageURL    string `json:"image_url"`
-	Stock       int    `json:"stock"`
-	IsFeatured  bool   `json:"is_featured"`
+	ID          string   `json:"id"`
+	Slug        string   `json:"slug"`
+	BrandName   string   `json:"brand_name"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+	Badge       string   `json:"badge"`
+	Price       int64    `json:"price"`
+	Currency    string   `json:"currency"`
+	ImageURL    string   `json:"image_url"`
+	Images      []string `json:"images"`
+	Stock       int      `json:"stock"`
+	IsFeatured  bool     `json:"is_featured"`
+}
+
+type ProductReviewResponse struct {
+	ID        string `json:"id"`
+	GuestName string `json:"guest_name"`
+	Rating    int    `json:"rating"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+type CreateProductReviewRequest struct {
+	GuestName  string `json:"guest_name" validate:"required"`
+	GuestPhone string `json:"guest_phone"`
+	Rating     int    `json:"rating"`
+	Body       string `json:"body" validate:"required"`
 }

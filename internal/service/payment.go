@@ -178,7 +178,7 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, payload selcom.Webho
 
 	if s.events != nil {
 		if order.PaymentStatus == PaymentStatusCompleted && previousStatus == string(models.OrderStatusPending) {
-			s.events.OrderCreated(order, hotel.Name)
+			s.events.OrderCreated(order, hotel)
 		} else if previousStatus != string(order.Status) {
 			s.events.OrderStatusUpdated(order, hotel.Name, previousStatus)
 		}
@@ -210,7 +210,7 @@ func (s *PaymentService) CompleteMockPayment(ctx context.Context, orderID uuid.U
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to update order", apperrors.ErrInternal.Status)
 	}
 	if s.events != nil && previousStatus == string(models.OrderStatusPending) {
-		s.events.OrderCreated(order, hotel.Name)
+		s.events.OrderCreated(order, hotel)
 	}
 	return order, nil
 }

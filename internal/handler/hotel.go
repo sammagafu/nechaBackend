@@ -74,6 +74,30 @@ func (h *HotelHandler) GetProduct(c *fiber.Ctx) error {
 	return response.OK(c, result)
 }
 
+func (h *HotelHandler) ListProductReviews(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	productSlug := c.Params("productSlug")
+	result, err := h.hotels.ListProductReviews(slug, productSlug)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
+}
+
+func (h *HotelHandler) CreateProductReview(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	productSlug := c.Params("productSlug")
+	var req dto.CreateProductReviewRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.Fail(c, err)
+	}
+	result, err := h.hotels.CreateProductReview(slug, productSlug, req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.Created(c, result)
+}
+
 func (h *HotelHandler) ListRooms(c *fiber.Ctx) error {
 	result, err := h.hotels.ListRooms(c.Params("slug"))
 	if err != nil {
@@ -83,7 +107,8 @@ func (h *HotelHandler) ListRooms(c *fiber.Ctx) error {
 }
 
 func (h *HotelHandler) ListMenu(c *fiber.Ctx) error {
-	result, err := h.hotels.ListMenu(c.Params("slug"))
+	menuKind := c.Query("kind")
+	result, err := h.hotels.ListMenu(c.Params("slug"), menuKind)
 	if err != nil {
 		return response.Fail(c, err)
 	}

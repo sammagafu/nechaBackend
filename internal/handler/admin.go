@@ -127,6 +127,45 @@ func (h *AdminHandler) UpdateProduct(c *fiber.Ctx) error {
 	return response.OK(c, result)
 }
 
+func (h *AdminHandler) ListMenuItems(c *fiber.Ctx) error {
+	result, err := h.admin.ListMenuItems(c.Params("hotelId"), c.Query("kind"))
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
+}
+
+func (h *AdminHandler) CreateMenuItem(c *fiber.Ctx) error {
+	var req dto.CreateMenuItemRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.Fail(c, err)
+	}
+	result, err := h.admin.CreateMenuItem(c.Params("hotelId"), req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.Created(c, result)
+}
+
+func (h *AdminHandler) UpdateMenuItem(c *fiber.Ctx) error {
+	var req dto.UpdateMenuItemRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Fail(c, err)
+	}
+	result, err := h.admin.UpdateMenuItem(c.Params("id"), req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
+}
+
+func (h *AdminHandler) DeleteMenuItem(c *fiber.Ctx) error {
+	if err := h.admin.DeleteMenuItem(c.Params("id")); err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, fiber.Map{"deleted": true})
+}
+
 func (h *AdminHandler) OrderSummary(c *fiber.Ctx) error {
 	result, err := h.admin.OrderSummary()
 	if err != nil {

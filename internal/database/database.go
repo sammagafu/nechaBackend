@@ -51,6 +51,14 @@ func migrateLegacy(db *gorm.DB) error {
 		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS referral_code text`, `UPDATE hotels SET referral_code = code WHERE referral_code IS NULL OR referral_code = ''`},
 		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS services jsonb DEFAULT '[]'`, `UPDATE hotels SET services = '[]' WHERE services IS NULL`},
 		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS is_verified boolean DEFAULT true`, `UPDATE hotels SET is_verified = true WHERE is_verified IS NULL`},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS google_maps_url text`, ``},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS latitude double precision`, ``},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS longitude double precision`, ``},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS email text`, ``},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS partner_type text DEFAULT 'hotel'`, `UPDATE hotels SET partner_type = 'hotel' WHERE partner_type IS NULL OR partner_type = ''`},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS commission_tier text DEFAULT 'standard'`, `UPDATE hotels SET commission_tier = 'standard' WHERE commission_tier IS NULL OR commission_tier = ''`},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS commission_tier_start_date timestamptz`, ``},
+		{`ALTER TABLE hotels ADD COLUMN IF NOT EXISTS selcom_payout_account text`, ``},
 	}
 
 	for _, step := range hotelSteps {
@@ -90,6 +98,12 @@ func migrateLegacy(db *gorm.DB) error {
 		return nil
 	}
 
+	if db.Migrator().HasTable(&models.HotelMenuItem{}) {
+		if err := db.Exec(`ALTER TABLE hotel_menu_items ADD COLUMN IF NOT EXISTS menu_kind text DEFAULT 'food'`).Error; err != nil {
+			return fmt.Errorf("legacy menu_kind migration: %w", err)
+		}
+	}
+
 	productSteps := []struct {
 		ddl      string
 		backfill string
@@ -98,6 +112,7 @@ func migrateLegacy(db *gorm.DB) error {
 		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS brand_name text`, `UPDATE products SET brand_name = 'NECHA NATURALS' WHERE brand_name IS NULL OR brand_name = ''`},
 		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS badge text`, ``},
 		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured boolean DEFAULT false`, `UPDATE products SET is_featured = false WHERE is_featured IS NULL`},
+		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS images jsonb DEFAULT '[]'`, `UPDATE products SET images = '[]' WHERE images IS NULL`},
 	}
 
 	for _, step := range productSteps {
@@ -122,6 +137,7 @@ func Migrate(db *gorm.DB) error {
 		&models.User{},
 		&models.Hotel{},
 		&models.Product{},
+		&models.ProductReview{},
 		&models.Reservation{},
 		&models.Order{},
 		&models.OrderItem{},
@@ -136,5 +152,22 @@ func Migrate(db *gorm.DB) error {
 		&models.HotelRoom{},
 		&models.HotelCategory{},
 		&models.HotelMenuItem{},
+		&models.Inquiry{},
+		&models.GuestRequest{},
+		&models.DeliveryZone{},
+		&models.PlatformConfig{},
+		&models.Influencer{},
+		&models.BookingReferral{},
+		&models.Supplier{},
+		&models.CatalogueItem{},
+		&models.PropertyVisibility{},
+		&models.CommissionRule{},
+		&models.CommissionRecord{},
+		&models.PayoutBatch{},
+		&models.PayoutBatchItem{},
+		&models.EventLog{},
+		&models.InventoryReservation{},
+		&models.RewardRule{},
+		&models.RewardLedgerEntry{},
 	)
 }

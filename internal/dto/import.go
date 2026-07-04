@@ -26,6 +26,7 @@ type HotelMenuItemResponse struct {
 	Description string `json:"description"`
 	Price       int64  `json:"price"`
 	Tag         string `json:"tag,omitempty"`
+	MenuKind    string `json:"menu_kind,omitempty"`
 }
 
 type HotelMenuResponse struct {

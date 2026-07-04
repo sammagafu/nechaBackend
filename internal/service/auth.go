@@ -111,7 +111,7 @@ func (s *AuthService) Me(userID string) (*dto.UserResponse, error) {
 }
 
 func toUserResponse(u *models.User) dto.UserResponse {
-	return dto.UserResponse{
+	resp := dto.UserResponse{
 		ID:           u.ID.String(),
 		Email:        u.Email,
 		FullName:     u.FullName,
@@ -119,4 +119,9 @@ func toUserResponse(u *models.User) dto.UserResponse {
 		Role:         string(u.Role),
 		AuthProvider: string(u.AuthProvider),
 	}
+	if u.HotelID != nil {
+		hid := u.HotelID.String()
+		resp.HotelID = &hid
+	}
+	return resp
 }

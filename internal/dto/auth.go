@@ -19,12 +19,13 @@ type AuthResponse struct {
 }
 
 type UserResponse struct {
-	ID           string `json:"id"`
-	Email        string `json:"email"`
-	FullName     string `json:"full_name"`
-	Phone        string `json:"phone"`
-	Role         string `json:"role"`
-	AuthProvider string `json:"auth_provider"`
+	ID           string  `json:"id"`
+	Email        string  `json:"email"`
+	FullName     string  `json:"full_name"`
+	Phone        string  `json:"phone"`
+	Role         string  `json:"role"`
+	AuthProvider string  `json:"auth_provider"`
+	HotelID      *string `json:"hotel_id,omitempty"`
 }
 
 type SocialLoginRequest struct {

@@ -12,6 +12,7 @@ type Role string
 const (
 	RoleCustomer Role = "customer"
 	RoleAdmin    Role = "admin"
+	RolePartner  Role = "partner"
 )
 
 type Claims struct {

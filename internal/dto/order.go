@@ -35,11 +35,16 @@ type ProductOrderRequest struct {
 	RoomNumber     string                    `json:"room_number"`
 	PaymentMethod  string                    `json:"payment_method"`
 	Currency       string                    `json:"currency"`
-	DeliveryFee    int64                     `json:"delivery_fee"`
-	ReturnURL      string                    `json:"return_url"`
+	DeliveryFee       int64                     `json:"delivery_fee"`
+	DeliveryZoneCode    string                    `json:"delivery_zone_code"`
+	DeliveryLatitude    *float64                  `json:"delivery_latitude"`
+	DeliveryLongitude   *float64                  `json:"delivery_longitude"`
+	ReturnURL           string                    `json:"return_url"`
 	CancelURL      string                    `json:"cancel_url"`
 	Items          []ProductOrderItemRequest `json:"items" validate:"required,min=1,dive"`
 	Notes          string                    `json:"notes"`
+	ReferralCode   string                    `json:"referral_code"`
+	SalesChannel   string                    `json:"sales_channel"`
 }
 
 type OrderItemResponse struct {

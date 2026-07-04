@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,14 +15,15 @@ import (
 
 type AdminService struct {
 	hotels       *repository.HotelRepository
+	catalog      *repository.HotelCatalogRepository
 	orders       *repository.OrderRepository
 	reservations *repository.ReservationRepository
 	events       *EventService
 	guestStays   *GuestStayService
 }
 
-func NewAdminService(hotels *repository.HotelRepository, orders *repository.OrderRepository, reservations *repository.ReservationRepository, events *EventService, guestStays *GuestStayService) *AdminService {
-	return &AdminService{hotels: hotels, orders: orders, reservations: reservations, events: events, guestStays: guestStays}
+func NewAdminService(hotels *repository.HotelRepository, catalog *repository.HotelCatalogRepository, orders *repository.OrderRepository, reservations *repository.ReservationRepository, events *EventService, guestStays *GuestStayService) *AdminService {
+	return &AdminService{hotels: hotels, catalog: catalog, orders: orders, reservations: reservations, events: events, guestStays: guestStays}
 }
 
 func (s *AdminService) ListGuestStays(limit, offset int) ([]dto.AdminGuestStayResponse, error) {
@@ -244,9 +246,13 @@ func (s *AdminService) CreateHotel(req dto.CreateHotelRequest) (*dto.AdminHotelR
 	hotel := &models.Hotel{
 		Code: req.Code, Slug: req.Slug, Name: req.Name, Description: req.Description,
 		Address: req.Address, City: req.City, Location: req.Location, Country: req.Country,
-		Zone: req.Zone, Phone: req.Phone, Initials: initials, LogoURL: req.LogoURL,
+		Zone: req.Zone, GoogleMapsURL: req.GoogleMapsURL, Latitude: req.Latitude, Longitude: req.Longitude,
+		Phone: req.Phone, Email: req.Email, Initials: initials, LogoURL: req.LogoURL,
 		ReferralCode: ref, Services: models.StringSlice(req.Services),
 		IsVerified: req.IsVerified, KkooappID: req.KkooappID, IsActive: true,
+		PartnerType:         defaultPartnerType(req.PartnerType),
+		CommissionTier:      defaultCommissionTier(req.CommissionTier),
+		SelcomPayoutAccount: req.SelcomPayoutAccount,
 	}
 	if err := s.hotels.Create(hotel); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to create hotel", apperrors.ErrInternal.Status)
@@ -307,7 +313,8 @@ func (s *AdminService) CreateProduct(hotelID string, req dto.CreateProductReques
 		HotelID: uid, Slug: req.Slug, BrandName: req.BrandName, Name: req.Name,
 		Description: req.Description, Category: req.Category, Badge: req.Badge,
 		Price: req.Price, Currency: currency, ImageURL: req.ImageURL,
-		Stock: req.Stock, IsFeatured: req.IsFeatured, IsActive: true,
+		Images: models.StringSlice(req.Images),
+		Stock:  req.Stock, IsFeatured: req.IsFeatured, IsActive: true,
 	}
 	if err := s.hotels.CreateProduct(product); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to create product", apperrors.ErrInternal.Status)
@@ -334,6 +341,86 @@ func (s *AdminService) UpdateProduct(id string, req dto.UpdateProductRequest) (*
 	}
 	resp := toAdminProductResponse(product)
 	return &resp, nil
+}
+
+func (s *AdminService) ListMenuItems(hotelID, menuKind string) ([]dto.MenuItemResponse, error) {
+	uid, err := uuid.Parse(hotelID)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "invalid hotel id", apperrors.ErrBadRequest.Status)
+	}
+	items, err := s.catalog.ListMenuItemsByKind(uid, menuKind, false)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list menu items", apperrors.ErrInternal.Status)
+	}
+	return toMenuItemResponses(items), nil
+}
+
+func (s *AdminService) CreateMenuItem(hotelID string, req dto.CreateMenuItemRequest) (*dto.MenuItemResponse, error) {
+	uid, err := uuid.Parse(hotelID)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "invalid hotel id", apperrors.ErrBadRequest.Status)
+	}
+	if _, err := s.hotels.FindByID(uid); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "hotel not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load hotel", apperrors.ErrInternal.Status)
+	}
+	currency := req.Currency
+	if currency == "" {
+		currency = "TZS"
+	}
+	menuKind := strings.TrimSpace(req.MenuKind)
+	if menuKind == "" {
+		menuKind = "food"
+	}
+	item := &models.HotelMenuItem{
+		HotelID: uid, Slug: req.Slug, Category: req.Category, Name: req.Name,
+		Description: req.Description, Price: req.Price, Currency: currency,
+		Tag: req.Tag, MenuKind: menuKind, SortOrder: req.SortOrder, IsActive: true,
+	}
+	if err := s.catalog.CreateMenuItem(item); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to create menu item", apperrors.ErrInternal.Status)
+	}
+	resp := toAdminMenuItemResponse(item)
+	return &resp, nil
+}
+
+func (s *AdminService) UpdateMenuItem(id string, req dto.UpdateMenuItemRequest) (*dto.MenuItemResponse, error) {
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "invalid menu item id", apperrors.ErrBadRequest.Status)
+	}
+	item, err := s.catalog.FindMenuItemByID(uid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "menu item not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load menu item", apperrors.ErrInternal.Status)
+	}
+	applyMenuItemUpdate(item, req)
+	if err := s.catalog.UpdateMenuItem(item); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to update menu item", apperrors.ErrInternal.Status)
+	}
+	resp := toAdminMenuItemResponse(item)
+	return &resp, nil
+}
+
+func (s *AdminService) DeleteMenuItem(id string) error {
+	uid, err := uuid.Parse(id)
+	if err != nil {
+		return apperrors.New(apperrors.ErrBadRequest.Code, "invalid menu item id", apperrors.ErrBadRequest.Status)
+	}
+	if _, err := s.catalog.FindMenuItemByID(uid); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apperrors.Wrap(err, apperrors.ErrNotFound.Code, "menu item not found", apperrors.ErrNotFound.Status)
+		}
+		return apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load menu item", apperrors.ErrInternal.Status)
+	}
+	if err := s.catalog.DeleteMenuItem(uid); err != nil {
+		return apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to delete menu item", apperrors.ErrInternal.Status)
+	}
+	return nil
 }
 
 func (s *AdminService) OrderSummary() (*dto.OrderSummary, error) {
@@ -514,8 +601,20 @@ func applyHotelUpdate(h *models.Hotel, req dto.UpdateHotelRequest) {
 	if req.Zone != nil {
 		h.Zone = *req.Zone
 	}
+	if req.GoogleMapsURL != nil {
+		h.GoogleMapsURL = *req.GoogleMapsURL
+	}
+	if req.Latitude != nil {
+		h.Latitude = req.Latitude
+	}
+	if req.Longitude != nil {
+		h.Longitude = req.Longitude
+	}
 	if req.Phone != nil {
 		h.Phone = *req.Phone
+	}
+	if req.Email != nil {
+		h.Email = *req.Email
 	}
 	if req.Initials != nil {
 		h.Initials = *req.Initials
@@ -535,9 +634,65 @@ func applyHotelUpdate(h *models.Hotel, req dto.UpdateHotelRequest) {
 	if req.KkooappID != nil {
 		h.KkooappID = *req.KkooappID
 	}
+	if req.PartnerType != nil {
+		h.PartnerType = defaultPartnerType(*req.PartnerType)
+	}
+	if req.CommissionTier != nil {
+		h.CommissionTier = defaultCommissionTier(*req.CommissionTier)
+	}
+	if req.SelcomPayoutAccount != nil {
+		h.SelcomPayoutAccount = *req.SelcomPayoutAccount
+	}
 	if req.IsActive != nil {
 		h.IsActive = *req.IsActive
 	}
+}
+
+func applyMenuItemUpdate(item *models.HotelMenuItem, req dto.UpdateMenuItemRequest) {
+	if req.Category != nil {
+		item.Category = *req.Category
+	}
+	if req.Name != nil {
+		item.Name = *req.Name
+	}
+	if req.Description != nil {
+		item.Description = *req.Description
+	}
+	if req.Price != nil {
+		item.Price = *req.Price
+	}
+	if req.Currency != nil {
+		item.Currency = *req.Currency
+	}
+	if req.Tag != nil {
+		item.Tag = *req.Tag
+	}
+	if req.MenuKind != nil {
+		item.MenuKind = *req.MenuKind
+	}
+	if req.SortOrder != nil {
+		item.SortOrder = *req.SortOrder
+	}
+	if req.IsActive != nil {
+		item.IsActive = *req.IsActive
+	}
+}
+
+func toAdminMenuItemResponse(item *models.HotelMenuItem) dto.MenuItemResponse {
+	return dto.MenuItemResponse{
+		ID: item.ID.String(), Slug: item.Slug, Category: item.Category,
+		Name: item.Name, Description: item.Description, Price: item.Price,
+		Currency: item.Currency, Tag: item.Tag, MenuKind: item.MenuKind,
+		SortOrder: item.SortOrder, IsActive: item.IsActive,
+	}
+}
+
+func toMenuItemResponses(items []models.HotelMenuItem) []dto.MenuItemResponse {
+	result := make([]dto.MenuItemResponse, 0, len(items))
+	for i := range items {
+		result = append(result, toAdminMenuItemResponse(&items[i]))
+	}
+	return result
 }
 
 func applyProductUpdate(p *models.Product, req dto.UpdateProductRequest) {
@@ -568,6 +723,9 @@ func applyProductUpdate(p *models.Product, req dto.UpdateProductRequest) {
 	if req.ImageURL != nil {
 		p.ImageURL = *req.ImageURL
 	}
+	if req.Images != nil {
+		p.Images = models.StringSlice(req.Images)
+	}
 	if req.Stock != nil {
 		p.Stock = *req.Stock
 	}
@@ -587,20 +745,53 @@ func toAdminHotelResponse(h *models.Hotel, productCount int64) dto.AdminHotelRes
 	return dto.AdminHotelResponse{
 		ID: h.ID.String(), Code: h.Code, Slug: h.Slug, Name: h.Name,
 		Description: h.Description, Address: h.Address, City: h.City,
-		Location: h.Location, Country: h.Country, Zone: h.Zone, Phone: h.Phone,
+		Location: h.Location, Country: h.Country, Zone: h.Zone,
+		GoogleMapsURL: h.GoogleMapsURL, Latitude: h.Latitude, Longitude: h.Longitude,
+		Phone: h.Phone, Email: h.Email,
 		Initials: h.Initials, LogoURL: h.LogoURL, ReferralCode: h.ReferralCode,
 		Services: services, IsVerified: h.IsVerified, KkooappID: h.KkooappID,
+		PartnerType: h.PartnerType, CommissionTier: h.CommissionTier,
+		CommissionTierStartDate: formatOptionalTime(h.CommissionTierStartDate),
+		SelcomPayoutAccount:     h.SelcomPayoutAccount,
 		IsActive: h.IsActive, ProductCount: productCount,
 		CreatedAt: h.CreatedAt.Format(time.RFC3339),
 	}
 }
 
+func defaultPartnerType(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return models.PartnerTypeHotel
+	}
+	return v
+}
+
+func defaultCommissionTier(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return models.CommissionTierStandard
+	}
+	return v
+}
+
+func formatOptionalTime(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.UTC().Format(time.RFC3339)
+	return &s
+}
+
 func toAdminProductResponse(p *models.Product) dto.AdminProductResponse {
+	images := []string(p.Images)
+	if images == nil {
+		images = []string{}
+	}
 	return dto.AdminProductResponse{
 		ID: p.ID.String(), HotelID: p.HotelID.String(), Slug: p.Slug,
 		BrandName: p.BrandName, Name: p.Name, Description: p.Description,
 		Category: p.Category, Badge: p.Badge, Price: p.Price, Currency: p.Currency,
-		ImageURL: p.ImageURL, Stock: p.Stock, IsFeatured: p.IsFeatured,
+		ImageURL: p.ImageURL, Images: images, Stock: p.Stock, IsFeatured: p.IsFeatured,
 		IsActive: p.IsActive, CreatedAt: p.CreatedAt.Format(time.RFC3339),
 	}
 }

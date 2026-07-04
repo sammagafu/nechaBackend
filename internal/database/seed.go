@@ -17,6 +17,9 @@ func Seed(db *gorm.DB, seedDemoUsers bool) error {
 	if err := seedHotels(db); err != nil {
 		return err
 	}
+	if err := seedPlatformDefaults(db); err != nil {
+		return err
+	}
 	if err := upgradeDiscoverService(db); err != nil {
 		return err
 	}
@@ -82,7 +85,7 @@ func seaCliffHotel() models.Hotel {
 		Slug:         "sea-cliff",
 		Name:         "Sea Cliff Hotel",
 		Description:  "Personal care, beauty & wellness — delivered to your room.",
-		Address:      "House No. 2, Salous St, Africana, Mbezi Beach",
+		Address:      "House No. 2, Selous St, Africana, Mbezi Beach",
 		City:         "Dar es Salaam",
 		Location:     "Masaki",
 		Country:      "Tanzania",
@@ -104,7 +107,7 @@ func nechaDemoHotel() models.Hotel {
 		Slug:         "necha-demo",
 		Name:         "Necha Demo Hotel",
 		Description:  "Demo partner property for sales and QA — same catalogue as Sea Cliff.",
-		Address:      "House No. 2, Salous St, Africana, Mbezi Beach",
+		Address:      "House No. 2, Selous St, Africana, Mbezi Beach",
 		City:         "Dar es Salaam",
 		Location:     "Mbezi Beach",
 		Country:      "Tanzania",
@@ -408,7 +411,30 @@ func upsertMissingCatalogProducts(db *gorm.DB) error {
 	return nil
 }
 
+func discoveryImageBySlug() map[string]string {
+	return map[string]string{
+		"jazz-by-the-bay":           "/assets/banner-2.jpg",
+		"makumbusho-art-night":      "/assets/assets-4.jpg",
+		"jahazi-live-friday":        "/assets/3.jpg",
+		"the-rock-restaurant":       "/assets/assets-5.jpg",
+		"azure-rooftop":             "/assets/banner-2.jpg",
+		"mama-nyama-choma":          "/assets/1.jpg",
+		"coco-beach-grill":          "/assets/2.jpg",
+		"mbudya-island-day-trip":    "/assets/assets-3.jpg",
+		"dar-city-highlights":       "/assets/assets-4.jpg",
+		"makumbusho-cultural-tour":  "/assets/3.jpg",
+		"yacht-club-sunset":         "/assets/banner-2.jpg",
+	}
+}
+
 func seedDiscovery(db *gorm.DB) error {
+	if err := ensureDiscoveryItems(db); err != nil {
+		return err
+	}
+	return syncDiscoveryImages(db)
+}
+
+func ensureDiscoveryItems(db *gorm.DB) error {
 	var count int64
 	if err := db.Model(&models.DiscoveryItem{}).Count(&count).Error; err != nil {
 		return err
@@ -417,6 +443,7 @@ func seedDiscovery(db *gorm.DB) error {
 		return nil
 	}
 
+	images := discoveryImageBySlug()
 	now := time.Now()
 	weekend := now.AddDate(0, 0, 3)
 	nextWeek := now.AddDate(0, 0, 10)
@@ -425,6 +452,7 @@ func seedDiscovery(db *gorm.DB) error {
 		{
 			Section: models.DiscoverySectionEvents, Subcategory: "music", Slug: "jazz-by-the-bay",
 			Name: "Jazz by the Bay", Description: "Live jazz on the Oysterbay waterfront with local artists and sunset views.",
+			ImageURL: images["jazz-by-the-bay"],
 			Venue: "Oysterbay Beach Club", Location: "Oysterbay", Distance: "1.5km",
 			EventStartsAt: &weekend, TicketMode: models.TicketModeReferral, TicketURL: "https://example.com/jazz-bay",
 			IsFeatured: true, Status: models.DiscoveryStatusActive, SortOrder: 1,
@@ -432,6 +460,7 @@ func seedDiscovery(db *gorm.DB) error {
 		{
 			Section: models.DiscoverySectionEvents, Subcategory: "cultural", Slug: "makumbusho-art-night",
 			Name: "National Museum Art Night", Description: "Evening exhibition of contemporary Tanzanian artists with guided tours.",
+			ImageURL: images["makumbusho-art-night"],
 			Venue: "National Museum", Location: "City Centre", Distance: "6km",
 			EventStartsAt: &nextWeek, TicketMode: models.TicketModeReferral,
 			Status: models.DiscoveryStatusActive, SortOrder: 2,
@@ -439,6 +468,7 @@ func seedDiscovery(db *gorm.DB) error {
 		{
 			Section: models.DiscoverySectionEvents, Subcategory: "nightlife", Slug: "jahazi-live-friday",
 			Name: "Jahazi Lounge Live", Description: "Friday live music and craft cocktails in Masaki.",
+			ImageURL: images["jahazi-live-friday"],
 			Venue: "Jahazi Lounge", Location: "Masaki", Distance: "0.6km", Phone: "+255712000003",
 			EventStartsAt: &weekend, TicketMode: models.TicketModeNone,
 			Status: models.DiscoveryStatusActive, SortOrder: 3,
@@ -446,48 +476,56 @@ func seedDiscovery(db *gorm.DB) error {
 		{
 			Section: models.DiscoverySectionRestaurants, Subcategory: "fine_dining", Slug: "the-rock-restaurant",
 			Name: "The Rock Restaurant", Description: "Iconic seafood restaurant perched on a rock off the Masaki shore.",
+			ImageURL: images["the-rock-restaurant"],
 			Location: "Masaki", Distance: "1.2km", Phone: "+255712000001", PriceHint: "From TZS 80,000",
 			IsFeatured: true, Status: models.DiscoveryStatusActive, SortOrder: 1,
 		},
 		{
 			Section: models.DiscoverySectionRestaurants, Subcategory: "rooftop", Slug: "azure-rooftop",
 			Name: "Azure Rooftop", Description: "Rooftop dining with panoramic views over Dar es Salaam bay.",
+			ImageURL: images["azure-rooftop"],
 			Location: "Masaki", Distance: "1.0km", PriceHint: "From TZS 65,000",
 			Status: models.DiscoveryStatusActive, SortOrder: 2,
 		},
 		{
 			Section: models.DiscoverySectionRestaurants, Subcategory: "local", Slug: "mama-nyama-choma",
 			Name: "Mama Nyama Choma", Description: "Authentic Tanzanian grilled meats and ugali — a local favourite.",
+			ImageURL: images["mama-nyama-choma"],
 			Location: "Kinondoni", Distance: "4km", PriceHint: "From TZS 25,000",
 			Status: models.DiscoveryStatusActive, SortOrder: 3,
 		},
 		{
 			Section: models.DiscoverySectionRestaurants, Subcategory: "beachfront", Slug: "coco-beach-grill",
 			Name: "Coco Beach Grill", Description: "Beachfront seafood and sundowners on the Msasani peninsula.",
+			ImageURL: images["coco-beach-grill"],
 			Location: "Msasani", Distance: "2km", PriceHint: "From TZS 45,000",
 			Status: models.DiscoveryStatusActive, SortOrder: 4,
 		},
 		{
 			Section: models.DiscoverySectionTours, Subcategory: "island", Slug: "mbudya-island-day-trip",
 			Name: "Mbudya Island Day Trip", Description: "White sand, snorkelling and fresh seafood — a half-day escape from the city.",
+			ImageURL: images["mbudya-island-day-trip"],
 			Location: "Mbudya Island", Distance: "Boat from Kunduchi", PriceHint: "From TZS 120,000",
 			Phone: "+255712000010", IsFeatured: true, Status: models.DiscoveryStatusActive, SortOrder: 1,
 		},
 		{
 			Section: models.DiscoverySectionTours, Subcategory: "city", Slug: "dar-city-highlights",
 			Name: "Dar City Highlights Tour", Description: "Half-day guided tour: Kariakoo market, Askari Monument and harbour views.",
+			ImageURL: images["dar-city-highlights"],
 			Location: "City Centre", Distance: "Pickup from hotel", PriceHint: "From TZS 95,000",
 			Status: models.DiscoveryStatusActive, SortOrder: 2,
 		},
 		{
 			Section: models.DiscoverySectionTours, Subcategory: "cultural", Slug: "makumbusho-cultural-tour",
 			Name: "Makumbusho Cultural Tour", Description: "Village museum visit with traditional dance performances and craft workshops.",
+			ImageURL: images["makumbusho-cultural-tour"],
 			Location: "Kijitonyama", Distance: "5km", PriceHint: "From TZS 55,000",
 			Status: models.DiscoveryStatusActive, SortOrder: 3,
 		},
 		{
 			Section: models.DiscoverySectionTours, Subcategory: "yacht", Slug: "yacht-club-sunset",
 			Name: "Yacht Club Sunset Cruise", Description: "Evening cruise on the Indian Ocean with drinks and coastal views.",
+			ImageURL: images["yacht-club-sunset"],
 			Location: "Msasani Bay", Distance: "2.5km", PriceHint: "From TZS 180,000",
 			Phone: "+255712000011", Status: models.DiscoveryStatusActive, SortOrder: 4,
 		},
@@ -501,12 +539,33 @@ func seedDiscovery(db *gorm.DB) error {
 	return nil
 }
 
+func syncDiscoveryImages(db *gorm.DB) error {
+	images := discoveryImageBySlug()
+	var items []models.DiscoveryItem
+	if err := db.Find(&items).Error; err != nil {
+		return err
+	}
+	for _, item := range items {
+		localImage, ok := images[item.Slug]
+		if !ok {
+			continue
+		}
+		if item.ImageURL == "" || strings.HasPrefix(item.ImageURL, "http") {
+			if err := db.Model(&item).Update("image_url", localImage).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 type seedUser struct {
-	Email    string
-	Password string
-	FullName string
-	Phone    string
-	Role     models.UserRole
+	Email     string
+	Password  string
+	FullName  string
+	Phone     string
+	Role      models.UserRole
+	HotelSlug string
 }
 
 func seedAdmin(db *gorm.DB, allowDefaults bool) error {
@@ -548,6 +607,14 @@ func seedTestUsers(db *gorm.DB) error {
 			Phone:    "+255700000002",
 			Role:     models.UserRoleCustomer,
 		},
+		{
+			Email:     envOr("DEMO_PARTNER_EMAIL", "partner@necha.africa"),
+			Password:  envOr("DEMO_PARTNER_PASSWORD", "partner12345"),
+			FullName:  "Hyatt Regency Partner",
+			Phone:     "+255700000003",
+			Role:      models.UserRolePartner,
+			HotelSlug: "hyatt-regency-dsm",
+		},
 	}
 	for _, user := range users {
 		if err := ensureUser(db, user); err != nil {
@@ -584,6 +651,24 @@ func ensureUser(db *gorm.DB, seed seedUser) error {
 		FullName:     seed.FullName,
 		Phone:        seed.Phone,
 		Role:         seed.Role,
+	}
+	// Link partner-role users to their property and put it on the founding tier so the
+	// partner dashboard and tier-transition job have realistic data to work with.
+	if seed.HotelSlug != "" {
+		var hotel models.Hotel
+		if err := db.Where("slug = ?", seed.HotelSlug).First(&hotel).Error; err == nil {
+			user.HotelID = &hotel.ID
+			if hotel.CommissionTier != models.CommissionTierFounding {
+				now := time.Now()
+				updates := map[string]interface{}{
+					"commission_tier":            models.CommissionTierFounding,
+					"commission_tier_start_date": &now,
+				}
+				if err := db.Model(&hotel).Updates(updates).Error; err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return db.Create(&user).Error
 }

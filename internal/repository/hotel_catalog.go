@@ -74,10 +74,38 @@ func (r *HotelCatalogRepository) ListCategories(hotelID uuid.UUID, kind models.C
 }
 
 func (r *HotelCatalogRepository) ListMenuItems(hotelID uuid.UUID, activeOnly bool) ([]models.HotelMenuItem, error) {
+	return r.ListMenuItemsByKind(hotelID, "", activeOnly)
+}
+
+func (r *HotelCatalogRepository) ListMenuItemsByKind(hotelID uuid.UUID, menuKind string, activeOnly bool) ([]models.HotelMenuItem, error) {
 	var items []models.HotelMenuItem
 	q := r.db.Where("hotel_id = ?", hotelID).Order("sort_order ASC, name ASC")
 	if activeOnly {
 		q = q.Where("is_active = ?", true)
 	}
+	if menuKind != "" {
+		q = q.Where("menu_kind = ?", menuKind)
+	}
 	return items, q.Find(&items).Error
+}
+
+func (r *HotelCatalogRepository) FindMenuItemByID(id uuid.UUID) (*models.HotelMenuItem, error) {
+	var item models.HotelMenuItem
+	err := r.db.First(&item, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *HotelCatalogRepository) CreateMenuItem(item *models.HotelMenuItem) error {
+	return r.db.Create(item).Error
+}
+
+func (r *HotelCatalogRepository) UpdateMenuItem(item *models.HotelMenuItem) error {
+	return r.db.Save(item).Error
+}
+
+func (r *HotelCatalogRepository) DeleteMenuItem(id uuid.UUID) error {
+	return r.db.Delete(&models.HotelMenuItem{}, "id = ?", id).Error
 }

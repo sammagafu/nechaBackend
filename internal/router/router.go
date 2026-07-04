@@ -23,7 +23,11 @@ type Handlers struct {
 	Order          *handler.OrderHandler
 	Admin          *handler.AdminHandler
 	Messaging      *handler.MessagingHandler
+	Inquiry        *handler.InquiryHandler
+	Platform       *handler.PlatformHandler
 	Payment        *handler.PaymentHandler
+	Commerce       *handler.CommerceHandler
+	Partner        *handler.PartnerHandler
 	JWT            *jwtmanager.Manager
 	AllowedOrigins string
 	DB             *gorm.DB
@@ -69,15 +73,29 @@ func Setup(app *fiber.App, h Handlers) {
 	hotels.Get("/slug/:slug", h.Hotel.GetBySlug)
 	hotels.Get("/slug/:slug/products", h.Hotel.ListProducts)
 	hotels.Get("/slug/:slug/products/:productSlug", h.Hotel.GetProduct)
+	hotels.Get("/slug/:slug/products/:productSlug/reviews", h.Hotel.ListProductReviews)
+	hotels.Post("/slug/:slug/products/:productSlug/reviews", h.Hotel.CreateProductReview)
 	hotels.Get("/slug/:slug/rooms", h.Hotel.ListRooms)
 	hotels.Get("/slug/:slug/menu", h.Hotel.ListMenu)
+	hotels.Post("/slug/:slug/requests", h.Platform.SubmitGuestRequest)
 	hotels.Post("/slug/:slug/scan", middleware.OptionalAuth(h.JWT), h.Hotel.RecordScan)
 	hotels.Get("/slug/:slug/discovery", h.Discovery.PortalBySlug)
 	hotels.Get("/:code/products", h.Hotel.ListProductsByCode)
 	hotels.Get("/:code", h.Hotel.GetByCode)
 
 	discovery := api.Group("/discovery")
+	discovery.Get("/items/:slug", h.Discovery.PublicGetBySlug)
 	discovery.Post("/events/submit", h.Discovery.SubmitEvent)
+
+	inquiries := api.Group("/inquiries")
+	inquiries.Use(limiter.New(limiter.Config{Max: 15, Expiration: time.Minute}))
+	inquiries.Post("/", h.Inquiry.Submit)
+
+	referrals := api.Group("/referrals")
+	referrals.Use(limiter.New(limiter.Config{Max: 15, Expiration: time.Minute}))
+	referrals.Post("/booking", h.Commerce.SubmitBookingReferral)
+
+	api.Get("/platform/settings", h.Platform.Settings)
 
 	reservations := api.Group("/reservations", middleware.OptionalAuth(h.JWT))
 	reservations.Post("/hotel", h.Reservation.CreateHotel)
@@ -88,6 +106,9 @@ func Setup(app *fiber.App, h Handlers) {
 	orders.Post("/product", h.Order.CreateProduct)
 	orders.Post("/food", h.Order.CreateFood)
 	orders.Get("/:id/track", h.Order.Track)
+
+	rewards := api.Group("/rewards", middleware.Auth(h.JWT))
+	rewards.Get("/balance", h.Commerce.UserRewardBalance)
 
 	api.Get("/alerts", h.Messaging.ListActiveAlerts)
 
@@ -121,6 +142,10 @@ func Setup(app *fiber.App, h Handlers) {
 	admin.Patch("/hotels/:id", h.Admin.UpdateHotel)
 	admin.Get("/hotels/:hotelId/products", h.Admin.ListProducts)
 	admin.Post("/hotels/:hotelId/products", h.Admin.CreateProduct)
+	admin.Get("/hotels/:hotelId/menu-items", h.Admin.ListMenuItems)
+	admin.Post("/hotels/:hotelId/menu-items", h.Admin.CreateMenuItem)
+	admin.Patch("/menu-items/:id", h.Admin.UpdateMenuItem)
+	admin.Delete("/menu-items/:id", h.Admin.DeleteMenuItem)
 	admin.Post("/hotels/:hotelId/import/:kind", h.Admin.ImportCSV)
 	admin.Patch("/products/:id", h.Admin.UpdateProduct)
 	admin.Get("/orders/summary", h.Admin.OrderSummary)
@@ -146,4 +171,32 @@ func Setup(app *fiber.App, h Handlers) {
 	admin.Post("/webhooks", h.Messaging.AdminCreateWebhook)
 	admin.Patch("/webhooks/:id", h.Messaging.AdminUpdateWebhook)
 	admin.Get("/webhooks/deliveries", h.Messaging.AdminListWebhookDeliveries)
+	admin.Get("/inquiries", h.Inquiry.AdminList)
+	admin.Patch("/inquiries/:id/status", h.Inquiry.AdminUpdateStatus)
+
+	// Commerce engine (brief §3, §8) — admin only; commission rates never exposed to guests/partners.
+	admin.Get("/influencers", h.Commerce.AdminListInfluencers)
+	admin.Post("/influencers", h.Commerce.AdminCreateInfluencer)
+	admin.Patch("/influencers/:id", h.Commerce.AdminUpdateInfluencer)
+	admin.Get("/booking-referrals", h.Commerce.AdminListBookingReferrals)
+	admin.Get("/suppliers", h.Commerce.AdminListSuppliers)
+	admin.Post("/suppliers", h.Commerce.AdminCreateSupplier)
+	admin.Patch("/suppliers/:id", h.Commerce.AdminUpdateSupplier)
+	admin.Get("/catalogue", h.Commerce.AdminListCatalogue)
+	admin.Post("/catalogue", h.Commerce.AdminCreateCatalogueItem)
+	admin.Patch("/catalogue/:id", h.Commerce.AdminUpdateCatalogueItem)
+	admin.Post("/catalogue/:id/visibility", h.Commerce.AdminSetCatalogueVisibility)
+	admin.Get("/commission-rules", h.Commerce.AdminListCommissionRules)
+	admin.Put("/commission-rules", h.Commerce.AdminUpsertCommissionRule)
+	admin.Get("/commission-records", h.Commerce.AdminListCommissionRecords)
+	admin.Get("/payout-batches", h.Commerce.AdminListPayoutBatches)
+	admin.Post("/payout-batches/generate", h.Commerce.AdminGeneratePayoutBatches)
+	admin.Post("/payout-batches/:id/release", h.Commerce.AdminReleasePayoutBatch)
+	admin.Put("/reward-rules", h.Commerce.AdminUpsertRewardRule)
+	admin.Get("/event-log", h.Commerce.AdminListEventLog)
+
+	partner := api.Group("/partner", middleware.Auth(h.JWT), middleware.RequirePartner())
+	partner.Get("/dashboard", h.Partner.Dashboard)
+	partner.Get("/orders", h.Partner.ListOrders)
+	partner.Get("/products", h.Partner.ListProducts)
 }

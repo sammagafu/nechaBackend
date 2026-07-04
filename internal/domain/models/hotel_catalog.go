@@ -51,6 +51,7 @@ type HotelMenuItem struct {
 	Price       int64     `gorm:"not null" json:"price"`
 	Currency    string    `gorm:"not null;default:TZS" json:"currency"`
 	Tag         string    `json:"tag,omitempty"`
+	MenuKind    string    `gorm:"not null;default:food;index" json:"menu_kind"`
 	SortOrder   int       `gorm:"default:0" json:"sort_order"`
 	IsActive    bool      `gorm:"default:true" json:"is_active"`
 	CreatedAt   time.Time `json:"created_at"`

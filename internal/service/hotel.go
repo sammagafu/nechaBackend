@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"time"
 
 	"github.com/nechaafrica/backend/internal/domain/models"
 	"github.com/nechaafrica/backend/internal/dto"
@@ -103,6 +104,7 @@ func (s *HotelService) PartnersLanding(catalogSlug string) (*dto.PartnersLanding
 			Location: hotel.Location,
 			Initials: hotel.Initials,
 			Slug:     hotel.Slug,
+			LogoURL:  hotel.LogoURL,
 		})
 	}
 
@@ -149,6 +151,78 @@ func (s *HotelService) GetProduct(slug, productSlug string) (*dto.ProductRespons
 	return &resp[0], nil
 }
 
+func (s *HotelService) ListProductReviews(slug, productSlug string) ([]dto.ProductReviewResponse, error) {
+	hotel, err := s.hotels.FindBySlug(slug)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "hotel not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load hotel", apperrors.ErrInternal.Status)
+	}
+	product, err := s.hotels.FindProductBySlug(hotel.ID, productSlug)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "product not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load product", apperrors.ErrInternal.Status)
+	}
+	reviews, err := s.hotels.ListApprovedReviews(product.ID, 100)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list reviews", apperrors.ErrInternal.Status)
+	}
+	result := make([]dto.ProductReviewResponse, 0, len(reviews))
+	for _, r := range reviews {
+		result = append(result, dto.ProductReviewResponse{
+			ID:        r.ID.String(),
+			GuestName: r.GuestName,
+			Rating:    r.Rating,
+			Body:      r.Body,
+			CreatedAt: r.CreatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return result, nil
+}
+
+func (s *HotelService) CreateProductReview(slug, productSlug string, req dto.CreateProductReviewRequest) (*dto.ProductReviewResponse, error) {
+	hotel, err := s.hotels.FindBySlug(slug)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "hotel not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load hotel", apperrors.ErrInternal.Status)
+	}
+	product, err := s.hotels.FindProductBySlug(hotel.ID, productSlug)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "product not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load product", apperrors.ErrInternal.Status)
+	}
+	rating := req.Rating
+	if rating < 1 || rating > 5 {
+		rating = 5
+	}
+	review := &models.ProductReview{
+		ProductID:  product.ID,
+		HotelID:    hotel.ID,
+		GuestName:  req.GuestName,
+		GuestPhone: req.GuestPhone,
+		Rating:     rating,
+		Body:       req.Body,
+		IsApproved: true,
+	}
+	if err := s.hotels.CreateReview(review); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to save review", apperrors.ErrInternal.Status)
+	}
+	return &dto.ProductReviewResponse{
+		ID:        review.ID.String(),
+		GuestName: review.GuestName,
+		Rating:    review.Rating,
+		Body:      review.Body,
+		CreatedAt: review.CreatedAt.UTC().Format(time.RFC3339),
+	}, nil
+}
+
 func (s *HotelService) ListRooms(slug string) ([]dto.HotelRoomResponse, error) {
 	hotel, err := s.hotels.FindBySlug(slug)
 	if err != nil {
@@ -172,7 +246,7 @@ func (s *HotelService) ListRooms(slug string) ([]dto.HotelRoomResponse, error) {
 	return result, nil
 }
 
-func (s *HotelService) ListMenu(slug string) (*dto.HotelMenuResponse, error) {
+func (s *HotelService) ListMenu(slug, menuKind string) (*dto.HotelMenuResponse, error) {
 	hotel, err := s.hotels.FindBySlug(slug)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -184,7 +258,7 @@ func (s *HotelService) ListMenu(slug string) (*dto.HotelMenuResponse, error) {
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list menu categories", apperrors.ErrInternal.Status)
 	}
-	items, err := s.catalog.ListMenuItems(hotel.ID, true)
+	items, err := s.catalog.ListMenuItemsByKind(hotel.ID, menuKind, true)
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list menu items", apperrors.ErrInternal.Status)
 	}
@@ -207,6 +281,7 @@ func (s *HotelService) ListMenu(slug string) (*dto.HotelMenuResponse, error) {
 			Description: item.Description,
 			Price:       item.Price,
 			Tag:         item.Tag,
+			MenuKind:    item.MenuKind,
 		})
 	}
 	return resp, nil
@@ -240,6 +315,10 @@ func toHotelResponse(hotel *models.Hotel) *dto.HotelResponse {
 func toProductResponses(products []models.Product) []dto.ProductResponse {
 	result := make([]dto.ProductResponse, 0, len(products))
 	for _, p := range products {
+		images := []string(p.Images)
+		if images == nil {
+			images = []string{}
+		}
 		result = append(result, dto.ProductResponse{
 			ID:          p.ID.String(),
 			Slug:        p.Slug,
@@ -251,6 +330,7 @@ func toProductResponses(products []models.Product) []dto.ProductResponse {
 			Price:       p.Price,
 			Currency:    p.Currency,
 			ImageURL:    p.ImageURL,
+			Images:      images,
 			Stock:       p.Stock,
 			IsFeatured:  p.IsFeatured,
 		})

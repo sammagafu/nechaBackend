@@ -62,6 +62,20 @@ func (r *HotelRepository) FindProductBySlug(hotelID uuid.UUID, slug string) (*mo
 	return &product, nil
 }
 
+func (r *HotelRepository) CreateReview(review *models.ProductReview) error {
+	return r.db.Create(review).Error
+}
+
+func (r *HotelRepository) ListApprovedReviews(productID uuid.UUID, limit int) ([]models.ProductReview, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var reviews []models.ProductReview
+	err := r.db.Where("product_id = ? AND is_approved = ?", productID, true).
+		Order("created_at DESC").Limit(limit).Find(&reviews).Error
+	return reviews, err
+}
+
 func (r *HotelRepository) ListAll() ([]models.Hotel, error) {
 	var hotels []models.Hotel
 	err := r.db.Order("created_at DESC").Find(&hotels).Error
