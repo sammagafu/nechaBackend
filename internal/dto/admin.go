@@ -200,7 +200,7 @@ type AdminOrderResponse struct {
 	HotelName     string `json:"hotel_name"`
 	Type          string `json:"type"`
 	Status        string `json:"status"`
-	KkooappRef    string `json:"kkooapp_ref"`
+	KkooappRef    string `json:"order_ref"`
 	CustomerName  string `json:"customer_name"`
 	CustomerPhone string `json:"customer_phone"`
 	RoomNumber    string `json:"room_number"`
@@ -236,7 +236,7 @@ type AdminReservationResponse struct {
 	HotelName       string `json:"hotel_name"`
 	Type            string `json:"type"`
 	Status          string `json:"status"`
-	KkooappRef      string `json:"kkooapp_ref"`
+	KkooappRef      string `json:"order_ref"`
 	GuestName       string `json:"guest_name"`
 	GuestEmail      string `json:"guest_email"`
 	GuestPhone      string `json:"guest_phone"`

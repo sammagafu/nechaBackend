@@ -1,13 +1,22 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nechaafrica/backend/internal/domain/models"
+	"github.com/nechaafrica/backend/internal/integration/selcom"
 	"github.com/nechaafrica/backend/internal/repository"
 	apperrors "github.com/nechaafrica/backend/pkg/errors"
 	"gorm.io/gorm"
+)
+
+const (
+	DisbursementStatusSkipped   = "skipped"
+	DisbursementStatusCompleted = "completed"
+	DisbursementStatusFailed    = "failed"
 )
 
 // PayoutService groups eligible commission records into settlement batches per payee and
@@ -17,14 +26,27 @@ type PayoutService struct {
 	commissions *repository.CommissionRepository
 	payouts     *repository.PayoutRepository
 	events      *repository.EventLogRepository
+	hotels      *repository.HotelRepository
+	influencers *repository.InfluencerRepository
+	selcom      selcom.Client
 }
 
 func NewPayoutService(
 	commissions *repository.CommissionRepository,
 	payouts *repository.PayoutRepository,
 	events *repository.EventLogRepository,
+	hotels *repository.HotelRepository,
+	influencers *repository.InfluencerRepository,
+	selcomClient selcom.Client,
 ) *PayoutService {
-	return &PayoutService{commissions: commissions, payouts: payouts, events: events}
+	return &PayoutService{
+		commissions: commissions,
+		payouts:     payouts,
+		events:      events,
+		hotels:      hotels,
+		influencers: influencers,
+		selcom:      selcomClient,
+	}
 }
 
 // GenerateBatches builds draft payout batches for all eligible, un-batched commission
@@ -59,7 +81,6 @@ func (s *PayoutService) GenerateBatches(until time.Time) ([]models.PayoutBatch, 
 	err = s.payouts.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
 
-		// Property batches — canonical owner: sets payout_batch_id on each record.
 		for hotelID, recs := range byProperty {
 			batch := &models.PayoutBatch{
 				PayeeType: models.PayeeTypeProperty,
@@ -94,7 +115,6 @@ func (s *PayoutService) GenerateBatches(until time.Time) ([]models.PayoutBatch, 
 			created = append(created, *batch)
 		}
 
-		// Influencer batches.
 		for influencerID, recs := range byInfluencer {
 			batch, err := createShareBatch(tx, models.PayeeTypeInfluencer, influencerID, recs, until, func(r models.CommissionRecord) int64 { return r.InfluencerShare })
 			if err != nil {
@@ -103,7 +123,6 @@ func (s *PayoutService) GenerateBatches(until time.Time) ([]models.PayoutBatch, 
 			created = append(created, *batch)
 		}
 
-		// Partner-referral batches.
 		for partnerID, recs := range byPartner {
 			batch, err := createShareBatch(tx, models.PayeeTypePartnerReferral, partnerID, recs, until, func(r models.CommissionRecord) int64 { return r.PartnerReferralShare })
 			if err != nil {
@@ -157,8 +176,7 @@ func createShareBatch(
 	return batch, nil
 }
 
-// Release marks a batch released. For property batches this settles the underlying records
-// (status → paid), which is what excludes them from future reconciliation as unpaid.
+// Release marks a batch released and triggers Selcom wallet disbursement when configured.
 func (s *PayoutService) Release(batchID uuid.UUID) (*models.PayoutBatch, error) {
 	batch, err := s.payouts.FindByID(batchID)
 	if err != nil {
@@ -170,10 +188,15 @@ func (s *PayoutService) Release(batchID uuid.UUID) (*models.PayoutBatch, error) 
 	if batch.Status == models.PayoutBatchStatusReleased {
 		return batch, nil
 	}
+
+	disburseRef, disburseStatus := s.disburseBatch(batch)
+
 	now := time.Now()
 	err = s.payouts.Transaction(func(tx *gorm.DB) error {
 		batch.Status = models.PayoutBatchStatusReleased
 		batch.ReleasedAt = &now
+		batch.DisbursementRef = disburseRef
+		batch.DisbursementStatus = disburseStatus
 		if err := tx.Save(batch).Error; err != nil {
 			return err
 		}
@@ -189,8 +212,56 @@ func (s *PayoutService) Release(batchID uuid.UUID) (*models.PayoutBatch, error) 
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to release batch", apperrors.ErrInternal.Status)
 	}
-	s.logEvent("payout_released", "payout_batch", &batch.ID, batch.PayeeType)
+	s.logEvent("payout_released", "payout_batch", &batch.ID, batch.PayeeType+":"+disburseStatus)
 	return batch, nil
+}
+
+func (s *PayoutService) disburseBatch(batch *models.PayoutBatch) (ref, status string) {
+	if s.selcom == nil || batch.TotalAmount <= 0 {
+		return "", DisbursementStatusSkipped
+	}
+
+	account, narrative := s.payoutAccountFor(batch)
+	if account == "" {
+		return "", DisbursementStatusSkipped
+	}
+
+	result, err := s.selcom.DisburseWallet(context.Background(), selcom.DisburseInput{
+		Reference: batch.ID.String(),
+		Account:   account,
+		Amount:    batch.TotalAmount,
+		Currency:  batch.Currency,
+		Narrative: narrative,
+	})
+	if err != nil {
+		return "", DisbursementStatusFailed
+	}
+	return result.Reference, DisbursementStatusCompleted
+}
+
+func (s *PayoutService) payoutAccountFor(batch *models.PayoutBatch) (account, narrative string) {
+	switch batch.PayeeType {
+	case models.PayeeTypeProperty:
+		if s.hotels == nil {
+			return "", ""
+		}
+		hotel, err := s.hotels.FindByID(batch.PayeeID)
+		if err != nil {
+			return "", ""
+		}
+		return hotel.SelcomPayoutAccount, fmt.Sprintf("Necha payout %s", hotel.Name)
+	case models.PayeeTypeInfluencer:
+		if s.influencers == nil {
+			return "", ""
+		}
+		inf, err := s.influencers.FindByID(batch.PayeeID)
+		if err != nil {
+			return "", ""
+		}
+		return inf.SelcomPayoutAccount, fmt.Sprintf("Necha influencer payout %s", inf.Name)
+	default:
+		return "", ""
+	}
 }
 
 func (s *PayoutService) List() ([]models.PayoutBatch, error) { return s.payouts.List() }

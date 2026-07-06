@@ -112,6 +112,10 @@ type GenerateBatchesRequest struct {
 
 // Rewards --------------------------------------------------------------------
 
+type RedeemRewardsRequest struct {
+	Points int64 `json:"points" validate:"required,min=1"`
+}
+
 type UpsertRewardRuleRequest struct {
 	Code                  string  `json:"code" validate:"required"`
 	Name                  string  `json:"name" validate:"required"`

@@ -105,10 +105,12 @@ func Setup(app *fiber.App, h Handlers) {
 	orders := api.Group("/orders", middleware.OptionalAuth(h.JWT))
 	orders.Post("/product", h.Order.CreateProduct)
 	orders.Post("/food", h.Order.CreateFood)
+	orders.Post("/discovery", h.Order.CreateDiscovery)
 	orders.Get("/:id/track", h.Order.Track)
 
 	rewards := api.Group("/rewards", middleware.Auth(h.JWT))
 	rewards.Get("/balance", h.Commerce.UserRewardBalance)
+	rewards.Post("/redeem", h.Commerce.UserRedeemRewards)
 
 	api.Get("/alerts", h.Messaging.ListActiveAlerts)
 
@@ -195,8 +197,21 @@ func Setup(app *fiber.App, h Handlers) {
 	admin.Put("/reward-rules", h.Commerce.AdminUpsertRewardRule)
 	admin.Get("/event-log", h.Commerce.AdminListEventLog)
 
+	admin.Get("/platform/settings", h.Platform.AdminSettings)
+	admin.Put("/platform/settings", h.Platform.AdminUpdateSettings)
+
 	partner := api.Group("/partner", middleware.Auth(h.JWT), middleware.RequirePartner())
 	partner.Get("/dashboard", h.Partner.Dashboard)
 	partner.Get("/orders", h.Partner.ListOrders)
 	partner.Get("/products", h.Partner.ListProducts)
+	partner.Patch("/products/:id", h.Partner.UpdateProduct)
+	partner.Get("/menu-items", h.Partner.ListMenuItems)
+	partner.Post("/menu-items", h.Partner.CreateMenuItem)
+	partner.Patch("/menu-items/:id", h.Partner.UpdateMenuItem)
+	partner.Get("/guest-stays", h.Partner.ListGuestStays)
+	partner.Get("/commissions", h.Partner.ListCommissions)
+	partner.Get("/settings", h.Partner.GetSettings)
+	partner.Patch("/settings", h.Partner.UpdateSettings)
+	partner.Get("/referrals", h.Partner.ListReferrals)
+	partner.Post("/referrals", h.Partner.CreateReferral)
 }

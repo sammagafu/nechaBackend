@@ -173,7 +173,18 @@ func ensureCanonicalHotels(db *gorm.DB) error {
 			return err
 		}
 	}
-	return nil
+	return ensureHotel(db, safariToursPartner())
+}
+
+func safariToursPartner() models.Hotel {
+	return models.Hotel{
+		Code: "SAFARIOPS", Slug: "safari-tours-tz", Name: "Safari Adventures Tanzania",
+		Description: "Licensed tour operator introducing travellers to East African safaris.",
+		Address: "Masaki", City: "Dar es Salaam", Location: "Masaki", Country: "Tanzania", Zone: "E",
+		Phone: "+255222119900", Email: "ops@safari-tours.tz", Initials: "SA", ReferralCode: "SAFARIOPS",
+		PartnerType: models.PartnerTypeTourOperator, SelcomPayoutAccount: "+255712345678",
+		Services: models.StringSlice{}, IsVerified: true, IsActive: true,
+	}
 }
 
 func ensureHotel(db *gorm.DB, seed models.Hotel) error {
@@ -614,6 +625,14 @@ func seedTestUsers(db *gorm.DB) error {
 			Phone:     "+255700000003",
 			Role:      models.UserRolePartner,
 			HotelSlug: "hyatt-regency-dsm",
+		},
+		{
+			Email:     envOr("DEMO_TOUR_PARTNER_EMAIL", "tours@necha.africa"),
+			Password:  envOr("DEMO_TOUR_PARTNER_PASSWORD", "tours12345"),
+			FullName:  "Safari Adventures Partner",
+			Phone:     "+255700000004",
+			Role:      models.UserRolePartner,
+			HotelSlug: "safari-tours-tz",
 		},
 	}
 	for _, user := range users {

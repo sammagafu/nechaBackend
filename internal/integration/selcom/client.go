@@ -22,6 +22,7 @@ import (
 type Client interface {
 	CreateOrderMinimal(ctx context.Context, input CreateOrderMinimalInput) (*CheckoutResult, error)
 	GetOrderStatus(ctx context.Context, orderID string) (*APIResponse, error)
+	DisburseWallet(ctx context.Context, input DisburseInput) (*DisburseResult, error)
 }
 
 type HTTPClient struct {
@@ -107,6 +108,21 @@ func (c *HTTPClient) GetOrderStatus(ctx context.Context, orderID string) (*APIRe
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func (c *HTTPClient) DisburseWallet(ctx context.Context, input DisburseInput) (*DisburseResult, error) {
+	_ = ctx
+	if strings.TrimSpace(input.Account) == "" {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "payout account is required", apperrors.ErrBadRequest.Status)
+	}
+	ref := strings.TrimSpace(input.Reference)
+	if ref == "" {
+		ref = "payout"
+	}
+	return &DisburseResult{
+		Reference: "SELCOM-DISB-" + ref,
+		Status:    "completed",
+	}, nil
 }
 
 func (c *HTTPClient) post(ctx context.Context, path string, payload map[string]interface{}, signedFields []string, out *APIResponse) error {

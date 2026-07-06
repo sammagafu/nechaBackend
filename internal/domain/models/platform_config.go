@@ -28,4 +28,13 @@ const (
 	ConfigKeyDeliveryPerKmTZS   = "delivery_per_km_tzs"
 	// Commission tier transition window in months (founding → standard, brief §4.2, §8).
 	ConfigKeyFoundingTierMonths = "founding_tier_months"
+
+	// Feature flags — admin toggles (stored as "true" / "false").
+	ConfigKeyFeatureRewardsEnabled              = "feature_rewards_enabled"
+	ConfigKeyFeatureRewardsRedeemEnabled        = "feature_rewards_redeem_enabled"
+	ConfigKeyFeatureDiscoveryTicketingEnabled   = "feature_discovery_ticketing_enabled"
+	ConfigKeyFeaturePartnerPortalEnabled        = "feature_partner_portal_enabled"
+	ConfigKeyFeaturePartnerProductsManageEnabled = "feature_partner_products_manage_enabled"
+	ConfigKeyFeatureDualCurrencyEnabled         = "feature_dual_currency_enabled"
+	ConfigKeyFeatureDistanceDeliveryEnabled     = "feature_distance_delivery_enabled"
 )

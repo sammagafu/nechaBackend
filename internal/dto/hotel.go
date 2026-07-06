@@ -10,8 +10,11 @@ type HotelResponse struct {
 	City         string   `json:"city"`
 	Location     string   `json:"location"`
 	Country      string   `json:"country"`
-	Zone         string   `json:"zone"`
-	Phone        string   `json:"phone"`
+	Zone           string   `json:"zone"`
+	GoogleMapsURL  string   `json:"google_maps_url"`
+	Latitude       *float64 `json:"latitude,omitempty"`
+	Longitude      *float64 `json:"longitude,omitempty"`
+	Phone          string   `json:"phone"`
 	Initials     string   `json:"initials"`
 	LogoURL      string   `json:"logo_url"`
 	ReferralCode string   `json:"referral_code"`

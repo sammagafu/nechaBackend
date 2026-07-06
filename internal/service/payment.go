@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -24,12 +25,13 @@ const (
 )
 
 type PaymentService struct {
-	cfg     config.SelcomConfig
-	selcom  selcom.Client
-	orders  *repository.OrderRepository
-	hotels  *repository.HotelRepository
-	events  *EventService
-	enabled bool
+	cfg       config.SelcomConfig
+	selcom    selcom.Client
+	orders    *repository.OrderRepository
+	hotels    *repository.HotelRepository
+	discovery *repository.DiscoveryRepository
+	events    *EventService
+	enabled   bool
 }
 
 func NewPaymentService(
@@ -37,16 +39,18 @@ func NewPaymentService(
 	selcomClient selcom.Client,
 	orders *repository.OrderRepository,
 	hotels *repository.HotelRepository,
+	discovery *repository.DiscoveryRepository,
 	events *EventService,
 ) *PaymentService {
 	enabled := cfg.MockMode || (cfg.APIKey != "" && cfg.APISecret != "" && cfg.Vendor != "")
 	return &PaymentService{
-		cfg:     cfg,
-		selcom:  selcomClient,
-		orders:  orders,
-		hotels:  hotels,
-		events:  events,
-		enabled: enabled,
+		cfg:       cfg,
+		selcom:    selcomClient,
+		orders:    orders,
+		hotels:    hotels,
+		discovery: discovery,
+		events:    events,
+		enabled:   enabled,
 	}
 }
 
@@ -178,6 +182,7 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, payload selcom.Webho
 
 	if s.events != nil {
 		if order.PaymentStatus == PaymentStatusCompleted && previousStatus == string(models.OrderStatusPending) {
+			s.finalizeDiscoveryTickets(order)
 			s.events.OrderCreated(order, hotel)
 		} else if previousStatus != string(order.Status) {
 			s.events.OrderStatusUpdated(order, hotel.Name, previousStatus)
@@ -210,9 +215,35 @@ func (s *PaymentService) CompleteMockPayment(ctx context.Context, orderID uuid.U
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to update order", apperrors.ErrInternal.Status)
 	}
 	if s.events != nil && previousStatus == string(models.OrderStatusPending) {
+		s.finalizeDiscoveryTickets(order)
 		s.events.OrderCreated(order, hotel)
 	}
 	return order, nil
+}
+
+func (s *PaymentService) finalizeDiscoveryTickets(order *models.Order) {
+	if s.discovery == nil || order == nil || !strings.Contains(order.Notes, "discovery_ticket:") {
+		return
+	}
+	var itemID uuid.UUID
+	qty := 1
+	for _, part := range strings.Split(order.Notes, "|") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, "item:") {
+			if id, err := uuid.Parse(strings.TrimPrefix(part, "item:")); err == nil {
+				itemID = id
+			}
+		}
+		if strings.HasPrefix(part, "qty:") {
+			if n, err := strconv.Atoi(strings.TrimPrefix(part, "qty:")); err == nil && n > 0 {
+				qty = n
+			}
+		}
+	}
+	if itemID == uuid.Nil {
+		return
+	}
+	_ = s.discovery.IncrementTicketsSold(itemID, qty)
 }
 
 func (s *PaymentService) GetPaymentStatus(ctx context.Context, orderID uuid.UUID) (string, string, error) {

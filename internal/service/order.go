@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nechaafrica/backend/internal/domain/models"
 	"github.com/nechaafrica/backend/internal/dto"
-	"github.com/nechaafrica/backend/internal/integration/kkooapp"
 	"github.com/nechaafrica/backend/internal/repository"
 	apperrors "github.com/nechaafrica/backend/pkg/errors"
 	"gorm.io/gorm"
@@ -18,36 +18,39 @@ import (
 type OrderService struct {
 	hotels      *repository.HotelRepository
 	orders      *repository.OrderRepository
-	kkooapp     kkooapp.Client
+	discovery   *repository.DiscoveryRepository
 	events      *EventService
 	payments    *PaymentService
 	guestStays  *GuestStayService
 	platform    *PlatformService
 	influencers *repository.InfluencerRepository
 	bookings    *repository.BookingReferralRepository
+	rewards     *repository.RewardRepository
 }
 
 func NewOrderService(
 	hotels *repository.HotelRepository,
 	orders *repository.OrderRepository,
-	kkooappClient kkooapp.Client,
+	discovery *repository.DiscoveryRepository,
 	events *EventService,
 	payments *PaymentService,
 	guestStays *GuestStayService,
 	platform *PlatformService,
 	influencers *repository.InfluencerRepository,
 	bookings *repository.BookingReferralRepository,
+	rewards *repository.RewardRepository,
 ) *OrderService {
 	return &OrderService{
 		hotels:      hotels,
 		orders:      orders,
-		kkooapp:     kkooappClient,
+		discovery:   discovery,
 		events:      events,
 		payments:    payments,
 		guestStays:  guestStays,
 		platform:    platform,
 		influencers: influencers,
 		bookings:    bookings,
+		rewards:     rewards,
 	}
 }
 
@@ -81,13 +84,8 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load hotel", apperrors.ErrInternal.Status)
 	}
 
-	if hotel.KkooappID == "" {
-		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "hotel is not linked to kkooapp", apperrors.ErrBadRequest.Status)
-	}
-
 	var total int64
 	items := make([]models.OrderItem, 0, len(req.Items))
-	kkItems := make([]kkooapp.FoodOrderItem, 0, len(req.Items))
 	for _, item := range req.Items {
 		lineTotal := item.UnitPrice * int64(item.Quantity)
 		total += lineTotal
@@ -97,12 +95,6 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 			UnitPrice:  item.UnitPrice,
 			TotalPrice: lineTotal,
 			Notes:      item.Notes,
-		})
-		kkItems = append(kkItems, kkooapp.FoodOrderItem{
-			Name:      item.Name,
-			Quantity:  item.Quantity,
-			UnitPrice: item.UnitPrice,
-			Notes:     item.Notes,
 		})
 	}
 
@@ -119,40 +111,23 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 		Currency:      "TZS",
 		Items:         items,
 		Notes:         req.Notes,
-		// In-house restaurant/bar fulfilment is a free utility — no commission (brief §2.2).
-		Category:     models.OrderCategoryRoomService,
-		SalesChannel: models.SalesChannelHotelStorefront,
+		Category:      models.OrderCategoryRoomService,
+		SalesChannel:  models.SalesChannelHotelStorefront,
+	}
+	if req.RequirePayment && total > 0 {
+		order.Category = models.OrderCategorySpaExternal
+		if s.payments != nil && s.payments.Enabled() {
+			order.Status = models.OrderStatusPending
+		} else {
+			order.Status = models.OrderStatusConfirmed
+		}
 	}
 
 	if err := s.orders.Create(order); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to create order", apperrors.ErrInternal.Status)
 	}
 
-	kkResp, err := s.kkooapp.PlaceFoodOrder(ctx, kkooapp.FoodOrderRequest{
-		PropertyID:    hotel.KkooappID,
-		CustomerName:  req.CustomerName,
-		CustomerPhone: req.CustomerPhone,
-		TableNumber:   req.TableNumber,
-		RoomNumber:    req.RoomNumber,
-		Items:         kkItems,
-		Notes:         req.Notes,
-		ExternalRef:   order.ID.String(),
-	})
-	if err != nil {
-		order.Status = models.OrderStatusFailed
-		order.Notes = err.Error()
-		_ = s.orders.Update(order)
-		return nil, err
-	}
-
-	order.KkooappRef = kkResp.Reference
-	order.Status = mapKkooappOrderStatus(kkResp.Status)
-	if kkResp.TotalAmount > 0 {
-		order.TotalAmount = kkResp.TotalAmount
-	}
-	if kkResp.Currency != "" {
-		order.Currency = kkResp.Currency
-	}
+	order.KkooappRef = nechaOrderRef(order.ID)
 	if err := s.orders.Update(order); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to update order", apperrors.ErrInternal.Status)
 	}
@@ -161,13 +136,48 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
 	}
-	if s.events != nil {
+
+	resp := toOrderResponse(loaded)
+	if req.RequirePayment && total > 0 && s.payments != nil && s.payments.Enabled() {
+		session, err := s.payments.StartCheckout(ctx, CheckoutInput{
+			Order:        loaded,
+			HotelName:    hotel.Name,
+			BuyerEmail:   req.CustomerEmail,
+			BuyerName:    req.CustomerName,
+			BuyerPhone:   req.CustomerPhone,
+			ReturnURL:    req.ReturnURL,
+			CancelURL:    req.CancelURL,
+			BuyerRemarks: req.Notes,
+			ItemCount:    len(items),
+		})
+		if err != nil {
+			loaded.Status = models.OrderStatusFailed
+			loaded.PaymentStatus = PaymentStatusFailed
+			_ = s.orders.Update(loaded)
+			return nil, err
+		}
+		resp.PaymentRequired = session.PaymentRequired
+		resp.PaymentURL = session.PaymentURL
+		resp.PaymentProvider = session.PaymentProvider
+		resp.PaymentStatus = session.PaymentStatus
+		if s.events != nil && !session.PaymentRequired {
+			s.events.OrderCreated(loaded, hotel)
+		}
+	} else if s.events != nil {
 		s.events.OrderCreated(loaded, hotel)
 	}
 	if s.guestStays != nil {
 		s.guestStays.RecordFromOrder(loaded, referralFromNotes(req.Notes), models.GuestStaySourceFoodOrder)
 	}
-	return toOrderResponse(loaded), nil
+	return resp, nil
+}
+
+func nechaOrderRef(id uuid.UUID) string {
+	s := strings.ReplaceAll(id.String(), "-", "")
+	if len(s) > 10 {
+		s = s[:10]
+	}
+	return "NA-" + strings.ToUpper(s)
 }
 
 func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOrderRequest, userID *uuid.UUID) (*dto.OrderResponse, error) {
@@ -260,8 +270,35 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 		total += req.DeliveryFee
 	}
 
+	redeemPoints := int64(0)
+	if req.RedeemPoints > 0 && userID != nil && s.rewards != nil && s.platform != nil &&
+		s.platform.FeatureEnabled(models.ConfigKeyFeatureRewardsRedeemEnabled, false) {
+		rule, err := s.rewards.ActiveRule()
+		if err != nil {
+			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "rewards not configured", apperrors.ErrBadRequest.Status)
+		}
+		balance, err := s.rewards.BalanceForUser(*userID)
+		if err != nil {
+			return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load reward balance", apperrors.ErrInternal.Status)
+		}
+		if req.RedeemPoints > balance {
+			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "insufficient reward points", apperrors.ErrBadRequest.Status)
+		}
+		discount := int64(float64(req.RedeemPoints) * rule.RedeemValuePerPoint)
+		if discount > total {
+			discount = total
+		}
+		total -= discount
+		if discount > 0 {
+			redeemPoints = req.RedeemPoints
+		}
+	}
+
 	notes := req.Notes
 	meta := []string{}
+	if redeemPoints > 0 {
+		meta = append(meta, "redeem_points:"+strconv.FormatInt(redeemPoints, 10))
+	}
 	if req.CustomerEmail != "" {
 		meta = append(meta, "email:"+req.CustomerEmail)
 	}
@@ -348,6 +385,17 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
 	}
 
+	if redeemPoints > 0 && userID != nil && s.rewards != nil {
+		orderID := loaded.ID
+		_ = s.rewards.AppendEntry(&models.RewardLedgerEntry{
+			UserID:    userID,
+			OrderID:   &orderID,
+			EntryType: models.RewardEntryTypeRedeem,
+			Points:    -redeemPoints,
+			Note:      "checkout order " + loaded.ID.String()[:8],
+		})
+	}
+
 	resp := toOrderResponse(loaded)
 	if s.guestStays != nil {
 		s.guestStays.RecordFromOrder(loaded, referralFromNotes(notes), models.GuestStaySourceProductOrder)
@@ -395,22 +443,123 @@ func (s *OrderService) Track(ctx context.Context, id uuid.UUID) (*dto.OrderTrack
 	status := string(order.Status)
 	updatedAt := order.UpdatedAt
 
-	if order.KkooappRef != "" {
-		kkStatus, err := s.kkooapp.GetOrderStatus(ctx, order.KkooappRef)
-		if err == nil {
-			status = kkStatus.Status
-			updatedAt = kkStatus.UpdatedAt
-			order.Status = mapKkooappOrderStatus(kkStatus.Status)
-			_ = s.orders.Update(order)
-		}
-	}
-
 	return &dto.OrderTrackResponse{
 		ID:         order.ID.String(),
 		Status:     status,
 		KkooappRef: order.KkooappRef,
 		UpdatedAt:  updatedAt.UTC().Format(time.RFC3339),
 	}, nil
+}
+
+func (s *OrderService) CreateDiscoveryOrder(ctx context.Context, req dto.DiscoveryOrderRequest, userID *uuid.UUID) (*dto.OrderResponse, error) {
+	if s.platform != nil && !s.platform.FeatureEnabled(models.ConfigKeyFeatureDiscoveryTicketingEnabled, false) {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "discovery ticketing is not enabled", apperrors.ErrBadRequest.Status)
+	}
+	if s.discovery == nil {
+		return nil, apperrors.New(apperrors.ErrInternal.Code, "discovery booking unavailable", apperrors.ErrInternal.Status)
+	}
+
+	item, err := s.discovery.FindActiveBySlug(strings.TrimSpace(req.DiscoverySlug))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "discovery item not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load discovery item", apperrors.ErrInternal.Status)
+	}
+	if item.TicketMode != models.TicketModePlatform {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "this listing does not support in-app ticketing", apperrors.ErrBadRequest.Status)
+	}
+	if item.PriceTZS <= 0 {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "ticket price is not configured", apperrors.ErrBadRequest.Status)
+	}
+
+	qty := req.Quantity
+	if qty < 1 {
+		qty = 1
+	}
+	if item.TicketCapacity > 0 && item.TicketsSold+qty > item.TicketCapacity {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "not enough tickets available", apperrors.ErrBadRequest.Status)
+	}
+
+	var hotel *models.Hotel
+	if item.HotelID != nil {
+		hotel, err = s.hotels.FindByID(*item.HotelID)
+	} else {
+		hotel, err = s.hotels.FindByCode("SEACLIFF24")
+	}
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "booking hotel not configured", apperrors.ErrBadRequest.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load hotel", apperrors.ErrInternal.Status)
+	}
+
+	lineTotal := item.PriceTZS * int64(qty)
+	category := models.OrderCategoryEvent
+	if item.Section == models.DiscoverySectionTours {
+		category = models.OrderCategoryTour
+	}
+
+	notes := "discovery_ticket:" + item.Slug + "|qty:" + strconv.Itoa(qty) + "|item:" + item.ID.String()
+	order := &models.Order{
+		HotelID:       hotel.ID,
+		UserID:        userID,
+		Type:          models.OrderTypeProduct,
+		Status:        models.OrderStatusPending,
+		CustomerName:  req.CustomerName,
+		CustomerPhone: req.CustomerPhone,
+		TotalAmount:   lineTotal,
+		Currency:      "TZS",
+		Category:      category,
+		SalesChannel:  models.SalesChannelB2C,
+		Notes:         notes,
+		Items: []models.OrderItem{{
+			Name:       item.Name + " ticket",
+			Quantity:   qty,
+			UnitPrice:  item.PriceTZS,
+			TotalPrice: lineTotal,
+		}},
+	}
+
+	if err := s.orders.Create(order); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to create order", apperrors.ErrInternal.Status)
+	}
+
+	loaded, err := s.orders.FindByID(order.ID)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
+	}
+
+	resp := toOrderResponse(loaded)
+	if s.payments != nil && s.payments.Enabled() {
+		session, err := s.payments.StartCheckout(ctx, CheckoutInput{
+			Order:        loaded,
+			HotelName:    hotel.Name,
+			BuyerEmail:   req.CustomerEmail,
+			BuyerName:    req.CustomerName,
+			BuyerPhone:   req.CustomerPhone,
+			ReturnURL:    req.ReturnURL,
+			CancelURL:    req.CancelURL,
+			BuyerRemarks: notes,
+			ItemCount:    qty,
+		})
+		if err != nil {
+			loaded.Status = models.OrderStatusFailed
+			loaded.PaymentStatus = PaymentStatusFailed
+			_ = s.orders.Update(loaded)
+			return nil, err
+		}
+		resp.PaymentRequired = session.PaymentRequired
+		resp.PaymentURL = session.PaymentURL
+		resp.PaymentProvider = session.PaymentProvider
+		resp.PaymentStatus = session.PaymentStatus
+		if s.events != nil && !session.PaymentRequired {
+			s.events.OrderCreated(loaded, hotel)
+		}
+	} else if s.events != nil {
+		s.events.OrderCreated(loaded, hotel)
+	}
+	return resp, nil
 }
 
 func toOrderResponse(o *models.Order) *dto.OrderResponse {
@@ -442,23 +591,6 @@ func toOrderResponse(o *models.Order) *dto.OrderResponse {
 		PaymentStatus:   o.PaymentStatus,
 		PaymentRef:      o.PaymentRef,
 		CreatedAt:       o.CreatedAt.UTC().Format(time.RFC3339),
-	}
-}
-
-func mapKkooappOrderStatus(status string) models.OrderStatus {
-	switch status {
-	case "confirmed":
-		return models.OrderStatusConfirmed
-	case "preparing":
-		return models.OrderStatusPreparing
-	case "ready":
-		return models.OrderStatusReady
-	case "delivered":
-		return models.OrderStatusDelivered
-	case "cancelled":
-		return models.OrderStatusCancelled
-	default:
-		return models.OrderStatusPending
 	}
 }
 

@@ -64,6 +64,19 @@ func (r *DiscoveryRepository) Save(item *models.DiscoveryItem) error {
 	return r.db.Save(item).Error
 }
 
+func (r *DiscoveryRepository) IncrementTicketsSold(id uuid.UUID, qty int) error {
+	result := r.db.Model(&models.DiscoveryItem{}).
+		Where("id = ? AND (ticket_capacity = 0 OR tickets_sold + ? <= ticket_capacity)", id, qty).
+		UpdateColumn("tickets_sold", gorm.Expr("tickets_sold + ?", qty))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func (r *DiscoveryRepository) CountByStatus(status string) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.DiscoveryItem{}).Where("status = ?", status).Count(&count).Error

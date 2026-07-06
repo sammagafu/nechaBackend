@@ -30,6 +30,7 @@ type EventService struct {
 	sms           SMSNotifier
 	commissions   *CommissionService
 	rewards       *repository.RewardRepository
+	platform      *PlatformService
 }
 
 // SetCommissionService wires the commission engine after construction (avoids an
@@ -41,6 +42,10 @@ func (s *EventService) SetCommissionService(c *CommissionService) {
 
 func (s *EventService) SetRewardRepository(r *repository.RewardRepository) {
 	s.rewards = r
+}
+
+func (s *EventService) SetPlatform(p *PlatformService) {
+	s.platform = p
 }
 
 type EmailNotifier interface {
@@ -307,6 +312,9 @@ func (s *EventService) GuestRequestCreated(req *models.GuestRequest, hotelName s
 
 func (s *EventService) earnRewards(order *models.Order) {
 	if s.rewards == nil || order.UserID == nil {
+		return
+	}
+	if s.platform != nil && !s.platform.FeatureEnabled(models.ConfigKeyFeatureRewardsEnabled, true) {
 		return
 	}
 	rule, err := s.rewards.ActiveRule()

@@ -41,6 +41,18 @@ func (h *OrderHandler) CreateFood(c *fiber.Ctx) error {
 	return response.Created(c, result)
 }
 
+func (h *OrderHandler) CreateDiscovery(c *fiber.Ctx) error {
+	var req dto.DiscoveryOrderRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.Fail(c, err)
+	}
+	result, err := h.orders.CreateDiscoveryOrder(c.Context(), req, userIDFromCtx(c))
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.Created(c, result)
+}
+
 func (h *OrderHandler) Track(c *fiber.Ctx) error {
 	id, err := uuid.Parse(c.Params("id"))
 	if err != nil {

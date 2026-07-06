@@ -38,6 +38,17 @@ func (m *MockClient) GetOrderStatus(ctx context.Context, orderID string) (*APIRe
 	}, nil
 }
 
+func (m *MockClient) DisburseWallet(ctx context.Context, input DisburseInput) (*DisburseResult, error) {
+	ref := input.Reference
+	if ref == "" {
+		ref = "DISB-MOCK"
+	}
+	return &DisburseResult{
+		Reference: "DISB-" + ref,
+		Status:    "completed",
+	}, nil
+}
+
 func trimRightSlash(value string) string {
 	if value == "" {
 		return "http://localhost:3000"

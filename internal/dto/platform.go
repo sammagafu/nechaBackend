@@ -33,7 +33,29 @@ type PlatformSettingsResponse struct {
 	TzsToUsdRate             float64                `json:"tzs_to_usd_rate"`
 	FreeDeliveryThresholdTZS int64                  `json:"free_delivery_threshold_tzs"`
 	DefaultDeliveryFeeTZS    int64                  `json:"default_delivery_fee_tzs"`
+	DeliveryBaseFeeTZS       int64                  `json:"delivery_base_fee_tzs"`
+	DeliveryPerKmTZS         int64                  `json:"delivery_per_km_tzs"`
+	Features                 PlatformFeatures       `json:"features"`
 	Zones                    []DeliveryZoneResponse `json:"zones"`
+}
+
+type PlatformFeatures struct {
+	RewardsEnabled               bool `json:"rewards_enabled"`
+	RewardsRedeemEnabled         bool `json:"rewards_redeem_enabled"`
+	DiscoveryTicketingEnabled    bool `json:"discovery_ticketing_enabled"`
+	PartnerPortalEnabled         bool `json:"partner_portal_enabled"`
+	PartnerProductsManageEnabled bool `json:"partner_products_manage_enabled"`
+	DualCurrencyEnabled          bool `json:"dual_currency_enabled"`
+	DistanceDeliveryEnabled      bool `json:"distance_delivery_enabled"`
+}
+
+type UpdatePlatformSettingsRequest struct {
+	TzsToUsdRate             *float64          `json:"tzs_to_usd_rate"`
+	FreeDeliveryThresholdTZS *int64            `json:"free_delivery_threshold_tzs"`
+	DefaultDeliveryFeeTZS    *int64            `json:"default_delivery_fee_tzs"`
+	DeliveryBaseFeeTZS       *int64            `json:"delivery_base_fee_tzs"`
+	DeliveryPerKmTZS         *int64            `json:"delivery_per_km_tzs"`
+	Features                 *PlatformFeatures `json:"features"`
 }
 
 type MenuItemResponse struct {

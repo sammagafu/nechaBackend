@@ -82,6 +82,18 @@ func (r *BookingReferralRepository) List() ([]models.BookingReferral, error) {
 	return out, err
 }
 
+func (r *BookingReferralRepository) ListByPartner(partnerID uuid.UUID, limit int) ([]models.BookingReferral, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	var out []models.BookingReferral
+	err := r.db.Where("referring_partner_id = ?", partnerID).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&out).Error
+	return out, err
+}
+
 // SupplierRepository ---------------------------------------------------------
 
 type SupplierRepository struct {
@@ -205,6 +217,15 @@ func (r *CommissionRepository) FindRecordByOrder(orderID uuid.UUID) (*models.Com
 		return nil, err
 	}
 	return &m, nil
+}
+
+func (r *CommissionRepository) ListRecordsByHotel(hotelID uuid.UUID, limit int) ([]models.CommissionRecord, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	var out []models.CommissionRecord
+	err := r.db.Where("hotel_id = ?", hotelID).Order("created_at DESC").Limit(limit).Find(&out).Error
+	return out, err
 }
 
 func (r *CommissionRepository) ListRecords() ([]models.CommissionRecord, error) {

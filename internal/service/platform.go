@@ -39,6 +39,9 @@ func (s *PlatformService) Settings() (*dto.PlatformSettingsResponse, error) {
 		TzsToUsdRate:             rate,
 		FreeDeliveryThresholdTZS: 180000,
 		DefaultDeliveryFeeTZS:    5000,
+		DeliveryBaseFeeTZS:       s.configInt64(models.ConfigKeyDeliveryBaseFeeTZS, 3000),
+		DeliveryPerKmTZS:         s.configInt64(models.ConfigKeyDeliveryPerKmTZS, 1000),
+		Features:                 s.loadFeatures(),
 		Zones:                    make([]dto.DeliveryZoneResponse, 0, len(zones)),
 	}
 	for _, z := range zones {
@@ -90,6 +93,13 @@ func (s *PlatformService) ComputeDeliveryFee(zoneCode string, subtotal int64) (i
 // when coordinates are unavailable. Config keys drive the base fee and per-km rate so the
 // pricing can be tuned without a code change.
 func (s *PlatformService) ComputeDeliveryFeeByDistance(hotel *models.Hotel, destLat, destLng *float64, subtotal int64) (int64, error) {
+	if !s.FeatureEnabled(models.ConfigKeyFeatureDistanceDeliveryEnabled, true) {
+		zone := ""
+		if hotel != nil {
+			zone = hotel.Zone
+		}
+		return s.ComputeDeliveryFee(zone, subtotal)
+	}
 	if hotel == nil || hotel.Latitude == nil || hotel.Longitude == nil || destLat == nil || destLng == nil {
 		zone := ""
 		if hotel != nil {
@@ -133,6 +143,89 @@ func haversineKm(lat1, lon1, lat2, lon2 float64) float64 {
 			math.Sin(dLon/2)*math.Sin(dLon/2)
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 	return earthRadiusKm * c
+}
+
+func (s *PlatformService) FeatureEnabled(key string, defaultVal bool) bool {
+	raw, err := s.config.Get(key)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return defaultVal
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultVal
+	}
+}
+
+func (s *PlatformService) setFeature(key string, enabled bool) error {
+	val := "false"
+	if enabled {
+		val = "true"
+	}
+	return s.config.Set(key, val)
+}
+
+func (s *PlatformService) configInt64(key string, defaultVal int64) int64 {
+	raw, err := s.config.Get(key)
+	if err != nil || raw == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return defaultVal
+	}
+	return parsed
+}
+
+func (s *PlatformService) loadFeatures() dto.PlatformFeatures {
+	return dto.PlatformFeatures{
+		RewardsEnabled:               s.FeatureEnabled(models.ConfigKeyFeatureRewardsEnabled, true),
+		RewardsRedeemEnabled:         s.FeatureEnabled(models.ConfigKeyFeatureRewardsRedeemEnabled, false),
+		DiscoveryTicketingEnabled:    s.FeatureEnabled(models.ConfigKeyFeatureDiscoveryTicketingEnabled, false),
+		PartnerPortalEnabled:         s.FeatureEnabled(models.ConfigKeyFeaturePartnerPortalEnabled, true),
+		PartnerProductsManageEnabled: s.FeatureEnabled(models.ConfigKeyFeaturePartnerProductsManageEnabled, false),
+		DualCurrencyEnabled:          s.FeatureEnabled(models.ConfigKeyFeatureDualCurrencyEnabled, true),
+		DistanceDeliveryEnabled:      s.FeatureEnabled(models.ConfigKeyFeatureDistanceDeliveryEnabled, true),
+	}
+}
+
+func (s *PlatformService) UpdateSettings(req dto.UpdatePlatformSettingsRequest) (*dto.PlatformSettingsResponse, error) {
+	if req.TzsToUsdRate != nil && *req.TzsToUsdRate > 0 {
+		if err := s.config.Set(models.ConfigKeyTzsToUsdRate, strconv.FormatFloat(*req.TzsToUsdRate, 'f', -1, 64)); err != nil {
+			return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to save rate", apperrors.ErrInternal.Status)
+		}
+	}
+	if req.DeliveryBaseFeeTZS != nil && *req.DeliveryBaseFeeTZS >= 0 {
+		if err := s.config.Set(models.ConfigKeyDeliveryBaseFeeTZS, strconv.FormatInt(*req.DeliveryBaseFeeTZS, 10)); err != nil {
+			return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to save delivery base fee", apperrors.ErrInternal.Status)
+		}
+	}
+	if req.DeliveryPerKmTZS != nil && *req.DeliveryPerKmTZS >= 0 {
+		if err := s.config.Set(models.ConfigKeyDeliveryPerKmTZS, strconv.FormatInt(*req.DeliveryPerKmTZS, 10)); err != nil {
+			return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to save delivery per-km fee", apperrors.ErrInternal.Status)
+		}
+	}
+	if req.Features != nil {
+		f := *req.Features
+		flags := map[string]bool{
+			models.ConfigKeyFeatureRewardsEnabled:               f.RewardsEnabled,
+			models.ConfigKeyFeatureRewardsRedeemEnabled:         f.RewardsRedeemEnabled,
+			models.ConfigKeyFeatureDiscoveryTicketingEnabled:    f.DiscoveryTicketingEnabled,
+			models.ConfigKeyFeaturePartnerPortalEnabled:         f.PartnerPortalEnabled,
+			models.ConfigKeyFeaturePartnerProductsManageEnabled: f.PartnerProductsManageEnabled,
+			models.ConfigKeyFeatureDualCurrencyEnabled:          f.DualCurrencyEnabled,
+			models.ConfigKeyFeatureDistanceDeliveryEnabled:      f.DistanceDeliveryEnabled,
+		}
+		for key, enabled := range flags {
+			if err := s.setFeature(key, enabled); err != nil {
+				return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to save feature flag", apperrors.ErrInternal.Status)
+			}
+		}
+	}
+	return s.Settings()
 }
 
 type GuestRequestService struct {

@@ -24,6 +24,26 @@ func (h *PlatformHandler) Settings(c *fiber.Ctx) error {
 	return response.OK(c, result)
 }
 
+func (h *PlatformHandler) AdminSettings(c *fiber.Ctx) error {
+	result, err := h.platform.Settings()
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
+}
+
+func (h *PlatformHandler) AdminUpdateSettings(c *fiber.Ctx) error {
+	var req dto.UpdatePlatformSettingsRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.Fail(c, err)
+	}
+	result, err := h.platform.UpdateSettings(req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
+}
+
 func (h *PlatformHandler) SubmitGuestRequest(c *fiber.Ctx) error {
 	var req dto.SubmitGuestRequestRequest
 	if err := bindAndValidate(c, &req); err != nil {

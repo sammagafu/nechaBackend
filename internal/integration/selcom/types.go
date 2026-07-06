@@ -30,6 +30,19 @@ type CheckoutResult struct {
 	QR                string
 }
 
+type DisburseInput struct {
+	Reference string
+	Account   string
+	Amount    int64
+	Currency  string
+	Narrative string
+}
+
+type DisburseResult struct {
+	Reference string
+	Status    string
+}
+
 type WebhookPayload struct {
 	Result        string `json:"result"`
 	ResultCode    string `json:"resultcode"`

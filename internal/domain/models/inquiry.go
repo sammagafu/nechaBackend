@@ -14,6 +14,7 @@ const (
 	InquiryTypeNewsletter        = "newsletter"
 	InquiryTypeEventListing      = "event_listing"
 	InquiryTypePartnerReferral   = "partner_referral"
+	InquiryTypeDiscoveryBooking  = "discovery_booking"
 
 	InquiryStatusNew      = "new"
 	InquiryStatusRead     = "read"

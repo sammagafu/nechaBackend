@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/nechaafrica/backend/internal/domain/models"
 	"github.com/nechaafrica/backend/internal/dto"
 	"github.com/nechaafrica/backend/internal/service"
 	apperrors "github.com/nechaafrica/backend/pkg/errors"
@@ -15,10 +16,11 @@ import (
 type CommerceHandler struct {
 	commerce *service.CommerceService
 	payouts  *service.PayoutService
+	platform *service.PlatformService
 }
 
-func NewCommerceHandler(commerce *service.CommerceService, payouts *service.PayoutService) *CommerceHandler {
-	return &CommerceHandler{commerce: commerce, payouts: payouts}
+func NewCommerceHandler(commerce *service.CommerceService, payouts *service.PayoutService, platform *service.PlatformService) *CommerceHandler {
+	return &CommerceHandler{commerce: commerce, payouts: payouts, platform: platform}
 }
 
 // Influencers
@@ -247,6 +249,9 @@ func (h *CommerceHandler) AdminListEventLog(c *fiber.Ctx) error {
 }
 
 func (h *CommerceHandler) UserRewardBalance(c *fiber.Ctx) error {
+	if h.platform != nil && !h.platform.FeatureEnabled(models.ConfigKeyFeatureRewardsEnabled, true) {
+		return response.Fail(c, apperrors.New(apperrors.ErrNotFound.Code, "rewards programme is not available", apperrors.ErrNotFound.Status))
+	}
 	userID, _ := c.Locals("user_id").(string)
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -259,15 +264,46 @@ func (h *CommerceHandler) UserRewardBalance(c *fiber.Ctx) error {
 	return response.OK(c, fiber.Map{"balance": balance, "ledger": ledger})
 }
 
-type PartnerHandler struct {
-	partner *service.PartnerService
+func (h *CommerceHandler) UserRedeemRewards(c *fiber.Ctx) error {
+	if h.platform != nil && !h.platform.FeatureEnabled(models.ConfigKeyFeatureRewardsRedeemEnabled, false) {
+		return response.Fail(c, apperrors.New(apperrors.ErrBadRequest.Code, "rewards redemption is not enabled", apperrors.ErrBadRequest.Status))
+	}
+	var req dto.RedeemRewardsRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return response.Fail(c, apperrors.New(apperrors.ErrBadRequest.Code, "invalid user", apperrors.ErrBadRequest.Status))
+	}
+	balance, err := h.commerce.RedeemRewards(uid, req.Points)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, fiber.Map{"balance": balance, "redeemed_points": req.Points})
 }
 
-func NewPartnerHandler(partner *service.PartnerService) *PartnerHandler {
-	return &PartnerHandler{partner: partner}
+type PartnerHandler struct {
+	partner  *service.PartnerService
+	platform *service.PlatformService
+}
+
+func NewPartnerHandler(partner *service.PartnerService, platform *service.PlatformService) *PartnerHandler {
+	return &PartnerHandler{partner: partner, platform: platform}
+}
+
+func (h *PartnerHandler) requirePortal() error {
+	if h.platform != nil && !h.platform.FeatureEnabled(models.ConfigKeyFeaturePartnerPortalEnabled, true) {
+		return apperrors.New(apperrors.ErrNotFound.Code, "partner portal is not available", apperrors.ErrNotFound.Status)
+	}
+	return nil
 }
 
 func (h *PartnerHandler) Dashboard(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
 	userID, _ := c.Locals("user_id").(string)
 	out, err := h.partner.Dashboard(userID)
 	if err != nil {
@@ -277,6 +313,9 @@ func (h *PartnerHandler) Dashboard(c *fiber.Ctx) error {
 }
 
 func (h *PartnerHandler) ListOrders(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
 	userID, _ := c.Locals("user_id").(string)
 	out, err := h.partner.ListOrders(userID)
 	if err != nil {
@@ -286,10 +325,159 @@ func (h *PartnerHandler) ListOrders(c *fiber.Ctx) error {
 }
 
 func (h *PartnerHandler) ListProducts(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
 	userID, _ := c.Locals("user_id").(string)
 	out, err := h.partner.ListProducts(userID)
 	if err != nil {
 		return response.Fail(c, err)
 	}
 	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) UpdateProduct(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	if h.platform != nil && !h.platform.FeatureEnabled(models.ConfigKeyFeaturePartnerProductsManageEnabled, false) {
+		return response.Fail(c, apperrors.New(apperrors.ErrForbidden.Code, "product self-service is not enabled", apperrors.ErrForbidden.Status))
+	}
+	var req dto.UpdateProductRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Fail(c, apperrors.New(apperrors.ErrBadRequest.Code, "invalid request body", apperrors.ErrBadRequest.Status))
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.UpdateProduct(userID, c.Params("id"), req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) ListMenuItems(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.ListMenu(userID, c.Query("kind"))
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) CreateMenuItem(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	if h.platform != nil && !h.platform.FeatureEnabled(models.ConfigKeyFeaturePartnerProductsManageEnabled, false) {
+		return response.Fail(c, apperrors.New(apperrors.ErrForbidden.Code, "menu self-service is not enabled", apperrors.ErrForbidden.Status))
+	}
+	var req dto.CreateMenuItemRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.CreateMenuItem(userID, req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.Created(c, out)
+}
+
+func (h *PartnerHandler) UpdateMenuItem(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	var req dto.UpdateMenuItemRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Fail(c, apperrors.New(apperrors.ErrBadRequest.Code, "invalid request body", apperrors.ErrBadRequest.Status))
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.UpdateMenuItem(userID, c.Params("id"), req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) ListGuestStays(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.ListGuestStays(userID)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) ListCommissions(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.ListCommissions(userID)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) GetSettings(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.GetSettings(userID)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) UpdateSettings(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	var req dto.PartnerUpdateSettingsRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Fail(c, apperrors.New(apperrors.ErrBadRequest.Code, "invalid request body", apperrors.ErrBadRequest.Status))
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.UpdateSettings(userID, req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) ListReferrals(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.ListReferrals(userID)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, out)
+}
+
+func (h *PartnerHandler) CreateReferral(c *fiber.Ctx) error {
+	if err := h.requirePortal(); err != nil {
+		return response.Fail(c, err)
+	}
+	var req dto.CreatePartnerReferralRequest
+	if err := bindAndValidate(c, &req); err != nil {
+		return response.Fail(c, err)
+	}
+	userID, _ := c.Locals("user_id").(string)
+	out, err := h.partner.CreateReferral(userID, req)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.Created(c, out)
 }

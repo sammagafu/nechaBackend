@@ -34,6 +34,22 @@ func (r *GuestStayRepository) List(limit, offset int) ([]models.GuestStay, error
 	return stays, err
 }
 
+func (r *GuestStayRepository) ListByHotel(hotelID uuid.UUID, limit int) ([]models.GuestStay, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	var stays []models.GuestStay
+	err := r.db.
+		Preload("Hotel").
+		Preload("User").
+		Preload("Order.Items").
+		Where("hotel_id = ?", hotelID).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&stays).Error
+	return stays, err
+}
+
 func (r *GuestStayRepository) ListByUser(userID uuid.UUID, limit int) ([]models.GuestStay, error) {
 	if limit <= 0 || limit > 50 {
 		limit = 20

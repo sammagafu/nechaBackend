@@ -103,8 +103,10 @@ type PayoutBatch struct {
 	Status      string     `gorm:"index;default:draft" json:"status"`
 	PeriodStart *time.Time `json:"period_start,omitempty"`
 	PeriodEnd   *time.Time `json:"period_end,omitempty"`
-	ReleasedAt  *time.Time `json:"released_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ReleasedAt          *time.Time `json:"released_at,omitempty"`
+	DisbursementRef     string     `json:"disbursement_ref,omitempty"`
+	DisbursementStatus  string     `json:"disbursement_status,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 

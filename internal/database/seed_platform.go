@@ -42,6 +42,24 @@ func seedPlatformDefaults(db *gorm.DB) error {
 		}
 	}
 
+	featureDefaults := map[string]string{
+		models.ConfigKeyFeatureRewardsEnabled:               "true",
+		models.ConfigKeyFeatureRewardsRedeemEnabled:         "false",
+		models.ConfigKeyFeatureDiscoveryTicketingEnabled:      "false",
+		models.ConfigKeyFeaturePartnerPortalEnabled:         "true",
+		models.ConfigKeyFeaturePartnerProductsManageEnabled: "false",
+		models.ConfigKeyFeatureDualCurrencyEnabled:          "true",
+		models.ConfigKeyFeatureDistanceDeliveryEnabled:      "true",
+	}
+	for key, value := range featureDefaults {
+		var row models.PlatformConfig
+		if err := db.Where("key = ?", key).First(&row).Error; err != nil {
+			if err := db.Create(&models.PlatformConfig{Key: key, Value: value}).Error; err != nil {
+				return err
+			}
+		}
+	}
+
 	var reward models.RewardRule
 	if err := db.Where("code = ?", "default").First(&reward).Error; err != nil {
 		if err := db.Create(&models.RewardRule{

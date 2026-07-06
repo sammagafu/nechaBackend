@@ -9,7 +9,6 @@ import (
 	"github.com/nechaafrica/backend/internal/database"
 	"github.com/nechaafrica/backend/internal/handler"
 	"github.com/nechaafrica/backend/internal/integration/email"
-	"github.com/nechaafrica/backend/internal/integration/kkooapp"
 	"github.com/nechaafrica/backend/internal/integration/selcom"
 	"github.com/nechaafrica/backend/internal/integration/sms"
 	"github.com/nechaafrica/backend/internal/repository"
@@ -33,14 +32,6 @@ func main() {
 	}
 	if err := database.Seed(db, cfg.SeedDemoUsers()); err != nil {
 		log.Fatalf("database seed failed: %v", err)
-	}
-
-	var kkClient kkooapp.Client
-	if cfg.Kkooapp.APIKey != "" {
-		kkClient = kkooapp.NewClient(cfg.Kkooapp)
-	} else {
-		log.Println("KKOOAPP_API_KEY not set — using mock Kkooapp client")
-		kkClient = kkooapp.NewMockClient()
 	}
 
 	jwtMgr := jwtmanager.NewManager(cfg.JWT.Secret, cfg.JWT.AccessTokenTTL)
@@ -103,12 +94,12 @@ func main() {
 	webhookSvc := service.NewWebhookService(webhookRepo, cfg.Webhook.InboundSecret)
 	eventSvc := service.NewEventService(notificationSvc, webhookSvc, userRepo, emailClient, smsClient)
 	commissionSvc := service.NewCommissionService(commissionRepo, influencerRepo, eventLogRepo)
-	payoutSvc := service.NewPayoutService(commissionRepo, payoutRepo, eventLogRepo)
 	eventSvc.SetCommissionService(commissionSvc)
 	eventSvc.SetRewardRepository(rewardRepo)
+	platformSvc := service.NewPlatformService(deliveryZoneRepo, platformConfigRepo)
+	eventSvc.SetPlatform(platformSvc)
 	commerceSvc := service.NewCommerceService(influencerRepo, bookingReferralRepo, supplierRepo, catalogueRepo, commissionRepo, rewardRepo, hotelRepo, eventLogRepo)
 	chatSvc := service.NewChatService(chatRepo, hotelRepo, userRepo, eventSvc)
-	reservationSvc := service.NewReservationService(hotelRepo, reservationRepo, kkClient, eventSvc, guestStaySvc)
 
 	var selcomClient selcom.Client
 	switch {
@@ -123,12 +114,14 @@ func main() {
 		selcomClient = selcom.NewMockClient(cfg.Selcom.PublicAppURL)
 	}
 
-	paymentSvc := service.NewPaymentService(cfg.Selcom, selcomClient, orderRepo, hotelRepo, eventSvc)
-	platformSvc := service.NewPlatformService(deliveryZoneRepo, platformConfigRepo)
-	orderSvc := service.NewOrderService(hotelRepo, orderRepo, kkClient, eventSvc, paymentSvc, guestStaySvc, platformSvc, influencerRepo, bookingReferralRepo)
+	payoutSvc := service.NewPayoutService(commissionRepo, payoutRepo, eventLogRepo, hotelRepo, influencerRepo, selcomClient)
+	reservationSvc := service.NewReservationService(hotelRepo, reservationRepo, eventSvc, guestStaySvc)
+
+	paymentSvc := service.NewPaymentService(cfg.Selcom, selcomClient, orderRepo, hotelRepo, discoveryRepo, eventSvc)
+	orderSvc := service.NewOrderService(hotelRepo, orderRepo, discoveryRepo, eventSvc, paymentSvc, guestStaySvc, platformSvc, influencerRepo, bookingReferralRepo, rewardRepo)
 	adminSvc := service.NewAdminService(hotelRepo, catalogRepo, orderRepo, reservationRepo, eventSvc, guestStaySvc)
-	partnerSvc := service.NewPartnerService(userRepo, adminSvc)
-	inquirySvc := service.NewInquiryService(inquiryRepo, eventSvc)
+	partnerSvc := service.NewPartnerService(userRepo, adminSvc, commissionRepo, guestStayRepo, hotelRepo, bookingReferralRepo)
+	inquirySvc := service.NewInquiryService(inquiryRepo, eventSvc, platformSvc)
 	guestRequestSvc := service.NewGuestRequestService(guestRequestRepo, hotelRepo, eventSvc)
 
 	// Scheduled background jobs: founding-tier auto-transition + inventory reservation sweep.
@@ -150,8 +143,8 @@ func main() {
 		Inquiry:        handler.NewInquiryHandler(inquirySvc),
 		Platform:       handler.NewPlatformHandler(platformSvc, guestRequestSvc),
 		Payment:        handler.NewPaymentHandler(paymentSvc, cfg.Selcom),
-		Commerce:       handler.NewCommerceHandler(commerceSvc, payoutSvc),
-		Partner:        handler.NewPartnerHandler(partnerSvc),
+		Commerce:       handler.NewCommerceHandler(commerceSvc, payoutSvc, platformSvc),
+		Partner:        handler.NewPartnerHandler(partnerSvc, platformSvc),
 		JWT:            jwtMgr,
 		AllowedOrigins: cfg.Server.AllowedOrigin,
 		DB:             db,

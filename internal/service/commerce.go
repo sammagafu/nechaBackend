@@ -423,6 +423,36 @@ func (s *CommerceService) RewardBalance(userID uuid.UUID) (int64, []models.Rewar
 	return balance, ledger, nil
 }
 
+func (s *CommerceService) RedeemRewards(userID uuid.UUID, points int64) (int64, error) {
+	if points <= 0 {
+		return 0, apperrors.New(apperrors.ErrBadRequest.Code, "points must be positive", apperrors.ErrBadRequest.Status)
+	}
+	_, err := s.rewards.ActiveRule()
+	if err != nil {
+		return 0, internal(err, "rewards rule not configured")
+	}
+	balance, err := s.rewards.BalanceForUser(userID)
+	if err != nil {
+		return 0, internal(err, "failed to compute balance")
+	}
+	if points > balance {
+		return 0, apperrors.New(apperrors.ErrBadRequest.Code, "insufficient points", apperrors.ErrBadRequest.Status)
+	}
+	if err := s.rewards.AppendEntry(&models.RewardLedgerEntry{
+		UserID:    &userID,
+		EntryType: models.RewardEntryTypeRedeem,
+		Points:    -points,
+		Note:      "Points redeemed",
+	}); err != nil {
+		return 0, internal(err, "failed to redeem points")
+	}
+	newBalance, err := s.rewards.BalanceForUser(userID)
+	if err != nil {
+		return 0, internal(err, "failed to compute balance")
+	}
+	return newBalance, nil
+}
+
 // EventLog -------------------------------------------------------------------
 
 func (s *CommerceService) ListEventLog(limit int) ([]models.EventLog, error) {

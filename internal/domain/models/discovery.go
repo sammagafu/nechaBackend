@@ -36,6 +36,9 @@ type DiscoveryItem struct {
 	Phone          string     `json:"phone"`
 	Website        string     `json:"website"`
 	PriceHint      string     `json:"price_hint"`
+	PriceTZS       int64      `gorm:"default:0" json:"price_tzs"`
+	TicketCapacity int        `gorm:"default:0" json:"ticket_capacity"`
+	TicketsSold    int        `gorm:"default:0" json:"tickets_sold"`
 	EventStartsAt  *time.Time `json:"event_starts_at"`
 	EventEndsAt    *time.Time `json:"event_ends_at"`
 	TicketURL      string     `json:"ticket_url"`

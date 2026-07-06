@@ -28,7 +28,7 @@ type ReservationResponse struct {
 	HotelID         string `json:"hotel_id"`
 	Type            string `json:"type"`
 	Status          string `json:"status"`
-	KkooappRef      string `json:"kkooapp_ref"`
+	KkooappRef      string `json:"order_ref"`
 	GuestName       string `json:"guest_name"`
 	GuestEmail      string `json:"guest_email"`
 	GuestPhone      string `json:"guest_phone"`

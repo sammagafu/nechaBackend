@@ -227,6 +227,8 @@ func (s *DiscoveryService) buildDiscoveryItem(req dto.CreateDiscoveryItemRequest
 		Phone:          req.Phone,
 		Website:        req.Website,
 		PriceHint:      req.PriceHint,
+		PriceTZS:       req.PriceTZS,
+		TicketCapacity: req.TicketCapacity,
 		TicketURL:      req.TicketURL,
 		TicketMode:     ticketMode,
 		OrganizerName:  req.OrganizerName,
@@ -302,6 +304,12 @@ func applyDiscoveryUpdate(item *models.DiscoveryItem, req dto.UpdateDiscoveryIte
 	if req.PriceHint != nil {
 		item.PriceHint = *req.PriceHint
 	}
+	if req.PriceTZS != nil {
+		item.PriceTZS = *req.PriceTZS
+	}
+	if req.TicketCapacity != nil {
+		item.TicketCapacity = *req.TicketCapacity
+	}
 	if req.EventStartsAt != nil {
 		if *req.EventStartsAt == "" {
 			item.EventStartsAt = nil
@@ -375,6 +383,17 @@ func slugifyDiscovery(name string) string {
 	return strings.Trim(s, "-")
 }
 
+func discoveryTicketsLeft(capacity, sold int) int {
+	if capacity <= 0 {
+		return 0
+	}
+	left := capacity - sold
+	if left < 0 {
+		return 0
+	}
+	return left
+}
+
 func toDiscoveryResponses(items []models.DiscoveryItem) []dto.DiscoveryItemResponse {
 	result := make([]dto.DiscoveryItemResponse, 0, len(items))
 	for i := range items {
@@ -384,26 +403,37 @@ func toDiscoveryResponses(items []models.DiscoveryItem) []dto.DiscoveryItemRespo
 }
 
 func toDiscoveryResponse(item *models.DiscoveryItem) dto.DiscoveryItemResponse {
+	ticketsLeft := 0
+	if item.TicketCapacity > 0 {
+		ticketsLeft = item.TicketCapacity - item.TicketsSold
+		if ticketsLeft < 0 {
+			ticketsLeft = 0
+		}
+	}
 	return dto.DiscoveryItemResponse{
-		ID:            item.ID.String(),
-		Section:       item.Section,
-		Subcategory:   item.Subcategory,
-		Slug:          item.Slug,
-		Name:          item.Name,
-		Description:   item.Description,
-		ImageURL:      item.ImageURL,
-		Venue:         item.Venue,
-		Location:      item.Location,
-		Distance:      item.Distance,
-		Phone:         item.Phone,
-		Website:       item.Website,
-		PriceHint:     item.PriceHint,
-		EventStartsAt: item.EventStartsAt,
-		EventEndsAt:   item.EventEndsAt,
-		TicketURL:     item.TicketURL,
-		TicketMode:    item.TicketMode,
-		OrganizerName: item.OrganizerName,
-		IsFeatured:    item.IsFeatured,
+		ID:             item.ID.String(),
+		Section:        item.Section,
+		Subcategory:    item.Subcategory,
+		Slug:           item.Slug,
+		Name:           item.Name,
+		Description:    item.Description,
+		ImageURL:       item.ImageURL,
+		Venue:          item.Venue,
+		Location:       item.Location,
+		Distance:       item.Distance,
+		Phone:          item.Phone,
+		Website:        item.Website,
+		PriceHint:      item.PriceHint,
+		PriceTZS:       item.PriceTZS,
+		TicketCapacity: item.TicketCapacity,
+		TicketsSold:    item.TicketsSold,
+		TicketsLeft:    ticketsLeft,
+		EventStartsAt:  item.EventStartsAt,
+		EventEndsAt:    item.EventEndsAt,
+		TicketURL:      item.TicketURL,
+		TicketMode:     item.TicketMode,
+		OrganizerName:  item.OrganizerName,
+		IsFeatured:     item.IsFeatured,
 	}
 }
 
@@ -428,6 +458,10 @@ func toAdminDiscoveryResponse(item *models.DiscoveryItem) dto.AdminDiscoveryItem
 		Phone:          item.Phone,
 		Website:        item.Website,
 		PriceHint:      item.PriceHint,
+		PriceTZS:       item.PriceTZS,
+		TicketCapacity: item.TicketCapacity,
+		TicketsSold:    item.TicketsSold,
+		TicketsLeft:    discoveryTicketsLeft(item.TicketCapacity, item.TicketsSold),
 		EventStartsAt:  item.EventStartsAt,
 		EventEndsAt:    item.EventEndsAt,
 		TicketURL:      item.TicketURL,

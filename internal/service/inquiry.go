@@ -14,25 +14,31 @@ import (
 type InquiryService struct {
 	inquiries *repository.InquiryRepository
 	events    *EventService
+	platform  *PlatformService
 }
 
-func NewInquiryService(inquiries *repository.InquiryRepository, events *EventService) *InquiryService {
-	return &InquiryService{inquiries: inquiries, events: events}
+func NewInquiryService(inquiries *repository.InquiryRepository, events *EventService, platform *PlatformService) *InquiryService {
+	return &InquiryService{inquiries: inquiries, events: events, platform: platform}
 }
 
 var allowedInquiryTypes = map[string]bool{
-	models.InquiryTypeHotelPartner:    true,
-	models.InquiryTypeBrandPartner:    true,
-	models.InquiryTypeContact:         true,
-	models.InquiryTypeNewsletter:      true,
-	models.InquiryTypeEventListing:    true,
-	models.InquiryTypePartnerReferral: true,
+	models.InquiryTypeHotelPartner:     true,
+	models.InquiryTypeBrandPartner:     true,
+	models.InquiryTypeContact:          true,
+	models.InquiryTypeNewsletter:       true,
+	models.InquiryTypeEventListing:     true,
+	models.InquiryTypePartnerReferral:  true,
+	models.InquiryTypeDiscoveryBooking: true,
 }
 
 func (s *InquiryService) Submit(req dto.SubmitInquiryRequest) (*dto.InquiryResponse, error) {
 	inquiryType := strings.TrimSpace(req.Type)
 	if !allowedInquiryTypes[inquiryType] {
 		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "invalid inquiry type", apperrors.ErrBadRequest.Status)
+	}
+	if inquiryType == models.InquiryTypeDiscoveryBooking && s.platform != nil &&
+		!s.platform.FeatureEnabled(models.ConfigKeyFeatureDiscoveryTicketingEnabled, false) {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "discovery booking is not enabled", apperrors.ErrBadRequest.Status)
 	}
 
 	meta := map[string]int{}

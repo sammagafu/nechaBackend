@@ -14,7 +14,11 @@ type FoodOrderRequest struct {
 	TableNumber   string                 `json:"table_number"`
 	RoomNumber    string                 `json:"room_number"`
 	Items         []FoodOrderItemRequest `json:"items" validate:"required,min=1,dive"`
-	Notes         string                 `json:"notes"`
+	Notes           string `json:"notes"`
+	RequirePayment  bool   `json:"require_payment"`
+	CustomerEmail   string `json:"customer_email"`
+	ReturnURL       string `json:"return_url"`
+	CancelURL       string `json:"cancel_url"`
 }
 
 type ProductOrderItemRequest struct {
@@ -39,6 +43,7 @@ type ProductOrderRequest struct {
 	DeliveryZoneCode    string                    `json:"delivery_zone_code"`
 	DeliveryLatitude    *float64                  `json:"delivery_latitude"`
 	DeliveryLongitude   *float64                  `json:"delivery_longitude"`
+	RedeemPoints   int64                     `json:"redeem_points"`
 	ReturnURL           string                    `json:"return_url"`
 	CancelURL      string                    `json:"cancel_url"`
 	Items          []ProductOrderItemRequest `json:"items" validate:"required,min=1,dive"`
@@ -60,7 +65,7 @@ type OrderResponse struct {
 	HotelID       string              `json:"hotel_id"`
 	Type          string              `json:"type"`
 	Status        string              `json:"status"`
-	KkooappRef    string              `json:"kkooapp_ref"`
+	KkooappRef    string              `json:"order_ref"`
 	CustomerName  string              `json:"customer_name"`
 	CustomerPhone string              `json:"customer_phone"`
 	TableNumber   string              `json:"table_number,omitempty"`
@@ -80,6 +85,6 @@ type OrderResponse struct {
 type OrderTrackResponse struct {
 	ID         string `json:"id"`
 	Status     string `json:"status"`
-	KkooappRef string `json:"kkooapp_ref"`
+	KkooappRef string `json:"order_ref"`
 	UpdatedAt  string `json:"updated_at"`
 }

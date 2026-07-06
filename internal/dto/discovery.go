@@ -16,6 +16,10 @@ type DiscoveryItemResponse struct {
 	Phone          string     `json:"phone"`
 	Website        string     `json:"website"`
 	PriceHint      string     `json:"price_hint"`
+	PriceTZS       int64      `json:"price_tzs"`
+	TicketCapacity int        `json:"ticket_capacity"`
+	TicketsSold    int        `json:"tickets_sold"`
+	TicketsLeft    int        `json:"tickets_left"`
 	EventStartsAt  *time.Time `json:"event_starts_at"`
 	EventEndsAt    *time.Time `json:"event_ends_at"`
 	TicketURL      string     `json:"ticket_url"`
@@ -62,6 +66,10 @@ type AdminDiscoveryItemResponse struct {
 	Phone          string     `json:"phone"`
 	Website        string     `json:"website"`
 	PriceHint      string     `json:"price_hint"`
+	PriceTZS       int64      `json:"price_tzs"`
+	TicketCapacity int        `json:"ticket_capacity"`
+	TicketsSold    int        `json:"tickets_sold"`
+	TicketsLeft    int        `json:"tickets_left"`
 	EventStartsAt  *time.Time `json:"event_starts_at"`
 	EventEndsAt    *time.Time `json:"event_ends_at"`
 	TicketURL      string     `json:"ticket_url"`
@@ -89,6 +97,8 @@ type CreateDiscoveryItemRequest struct {
 	Phone          string  `json:"phone"`
 	Website        string  `json:"website"`
 	PriceHint      string  `json:"price_hint"`
+	PriceTZS       int64   `json:"price_tzs"`
+	TicketCapacity int     `json:"ticket_capacity"`
 	EventStartsAt  string  `json:"event_starts_at"`
 	EventEndsAt    string  `json:"event_ends_at"`
 	TicketURL      string  `json:"ticket_url"`
@@ -114,6 +124,8 @@ type UpdateDiscoveryItemRequest struct {
 	Phone          *string `json:"phone"`
 	Website        *string `json:"website"`
 	PriceHint      *string `json:"price_hint"`
+	PriceTZS       *int64  `json:"price_tzs"`
+	TicketCapacity *int    `json:"ticket_capacity"`
 	EventStartsAt  *string `json:"event_starts_at"`
 	EventEndsAt    *string `json:"event_ends_at"`
 	TicketURL      *string `json:"ticket_url"`
