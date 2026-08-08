@@ -10,6 +10,7 @@ import (
 const (
 	InquiryTypeHotelPartner      = "hotel_partner"
 	InquiryTypeBrandPartner      = "brand_partner"
+	InquiryTypeAffiliatePartner  = "affiliate_partner"
 	InquiryTypeContact           = "contact"
 	InquiryTypeNewsletter        = "newsletter"
 	InquiryTypeEventListing      = "event_listing"

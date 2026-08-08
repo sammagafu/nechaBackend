@@ -37,4 +37,5 @@ const (
 	ConfigKeyFeaturePartnerProductsManageEnabled = "feature_partner_products_manage_enabled"
 	ConfigKeyFeatureDualCurrencyEnabled         = "feature_dual_currency_enabled"
 	ConfigKeyFeatureDistanceDeliveryEnabled     = "feature_distance_delivery_enabled"
+	ConfigKeyFeatureB2CShopEnabled              = "feature_b2c_shop_enabled"
 )

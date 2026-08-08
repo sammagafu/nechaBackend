@@ -44,17 +44,26 @@ func seedPlatformDefaults(db *gorm.DB) error {
 
 	featureDefaults := map[string]string{
 		models.ConfigKeyFeatureRewardsEnabled:               "true",
-		models.ConfigKeyFeatureRewardsRedeemEnabled:         "false",
-		models.ConfigKeyFeatureDiscoveryTicketingEnabled:      "false",
+		models.ConfigKeyFeatureRewardsRedeemEnabled:         "true",
+		models.ConfigKeyFeatureDiscoveryTicketingEnabled:    "false",
 		models.ConfigKeyFeaturePartnerPortalEnabled:         "true",
 		models.ConfigKeyFeaturePartnerProductsManageEnabled: "false",
 		models.ConfigKeyFeatureDualCurrencyEnabled:          "true",
 		models.ConfigKeyFeatureDistanceDeliveryEnabled:      "true",
+		models.ConfigKeyFeatureB2CShopEnabled:               "true",
 	}
 	for key, value := range featureDefaults {
 		var row models.PlatformConfig
 		if err := db.Where("key = ?", key).First(&row).Error; err != nil {
 			if err := db.Create(&models.PlatformConfig{Key: key, Value: value}).Error; err != nil {
+				return err
+			}
+			continue
+		}
+		// Phase 2 enablement: turn on B2C + rewards redeem if still on legacy defaults.
+		if (key == models.ConfigKeyFeatureB2CShopEnabled || key == models.ConfigKeyFeatureRewardsRedeemEnabled) &&
+			row.Value != "true" {
+			if err := db.Model(&row).Update("value", "true").Error; err != nil {
 				return err
 			}
 		}

@@ -258,7 +258,13 @@ func (s *HotelService) ListMenu(slug, menuKind string) (*dto.HotelMenuResponse, 
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list menu categories", apperrors.ErrInternal.Status)
 	}
-	items, err := s.catalog.ListMenuItemsByKind(hotel.ID, menuKind, true)
+	var items []models.HotelMenuItem
+	if menuKind == "wellness" {
+		// Guest wellness page shows in-house requests and external/paid treatments together.
+		items, err = s.catalog.ListMenuItemsByKinds(hotel.ID, []string{"wellness", "wellness_paid"}, true)
+	} else {
+		items, err = s.catalog.ListMenuItemsByKind(hotel.ID, menuKind, true)
+	}
 	if err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list menu items", apperrors.ErrInternal.Status)
 	}

@@ -102,6 +102,11 @@ func (s *CommissionService) Generate(order *models.Order, hotel *models.Hotel) e
 	// GMV excludes any delivery fee bundled into the order total is out of scope here;
 	// TotalAmount is treated as the commissionable GMV.
 	split := computeSplit(rule, order.TotalAmount, tier)
+	// B2C channel: no property premium — Necha + supplier only (brief §17.1.4).
+	if order.SalesChannel == models.SalesChannelB2C && split.PropertyShare > 0 {
+		split.NechaShare += split.PropertyShare
+		split.PropertyShare = 0
+	}
 
 	rec := &models.CommissionRecord{
 		OrderID:        order.ID,

@@ -28,6 +28,7 @@ type EventService struct {
 	users         *repository.UserRepository
 	email         EmailNotifier
 	sms           SMSNotifier
+	whatsapp      WhatsAppNotifier
 	commissions   *CommissionService
 	rewards       *repository.RewardRepository
 	platform      *PlatformService
@@ -58,12 +59,18 @@ type SMSNotifier interface {
 	Send(to, body string) error
 }
 
+type WhatsAppNotifier interface {
+	NotifyAdmin(body string) error
+	Send(to, body string) error
+}
+
 func NewEventService(
 	notifications *NotificationService,
 	webhooks *WebhookService,
 	users *repository.UserRepository,
 	email EmailNotifier,
 	sms SMSNotifier,
+	whatsapp WhatsAppNotifier,
 ) *EventService {
 	return &EventService{
 		notifications: notifications,
@@ -71,6 +78,7 @@ func NewEventService(
 		users:         users,
 		email:         email,
 		sms:           sms,
+		whatsapp:      whatsapp,
 	}
 }
 
@@ -105,11 +113,24 @@ func (s *EventService) OrderCreated(order *models.Order, hotel *models.Hotel) {
 			_ = s.email.Send(hotelEmail, title, body)
 		}
 	}
-	// SMS: Necha admin + the hotel (when a contact number is on file).
+	// SMS: Necha admin + the hotel (when a contact number is on file) + guest confirmation.
 	if s.sms != nil {
 		_ = s.sms.NotifyAdmin(smsBody)
 		if hotelPhone != "" {
 			_ = s.sms.Send(hotelPhone, smsBody)
+		}
+		if order.CustomerPhone != "" {
+			_ = s.sms.Send(order.CustomerPhone, guestOrderSMSBody(order, hotelName))
+		}
+	}
+	// WhatsApp: same fan-out as SMS when configured (Phase 2 §13).
+	if s.whatsapp != nil {
+		_ = s.whatsapp.NotifyAdmin(smsBody)
+		if hotelPhone != "" {
+			_ = s.whatsapp.Send(hotelPhone, smsBody)
+		}
+		if order.CustomerPhone != "" {
+			_ = s.whatsapp.Send(order.CustomerPhone, guestOrderSMSBody(order, hotelName))
 		}
 	}
 
@@ -170,6 +191,17 @@ func orderSMSBody(order *models.Order, hotelName string) string {
 		room = "—"
 	}
 	return fmt.Sprintf("Necha: new order at %s. Room %s, %d item(s), total %s %d.", hotelName, room, itemCount, order.Currency, order.TotalAmount)
+}
+
+func guestOrderSMSBody(order *models.Order, hotelName string) string {
+	ref := order.ID.String()
+	if len(ref) > 8 {
+		ref = ref[:8]
+	}
+	if order.Type == models.OrderTypeFood && order.TotalAmount == 0 {
+		return fmt.Sprintf("Necha: your request at %s was received (ref %s). Room %s — the hotel will follow up.", hotelName, ref, order.RoomNumber)
+	}
+	return fmt.Sprintf("Necha: order confirmed at %s (ref %s). Room %s, total %s %d.", hotelName, ref, order.RoomNumber, order.Currency, order.TotalAmount)
 }
 
 func (s *EventService) OrderStatusUpdated(order *models.Order, hotelName, previousStatus string) {

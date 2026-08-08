@@ -61,6 +61,10 @@ type Order struct {
 	Currency     string      `gorm:"not null;default:USD" json:"currency"`
 	Items        []OrderItem `gorm:"foreignKey:OrderID" json:"items"`
 	Notes           string `json:"notes,omitempty"`
+	// B2C street delivery (Phase 2 §17.1.2) — distinct from hotel room delivery.
+	DeliveryAddress string `json:"delivery_address,omitempty"`
+	DeliveryCity    string `json:"delivery_city,omitempty"`
+	DeliveryCountry string `json:"delivery_country,omitempty"`
 	PaymentProvider string `json:"payment_provider,omitempty"`
 	PaymentStatus   string `json:"payment_status,omitempty"`
 	PaymentRef      string `gorm:"index" json:"payment_ref,omitempty"`

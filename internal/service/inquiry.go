@@ -24,6 +24,7 @@ func NewInquiryService(inquiries *repository.InquiryRepository, events *EventSer
 var allowedInquiryTypes = map[string]bool{
 	models.InquiryTypeHotelPartner:     true,
 	models.InquiryTypeBrandPartner:     true,
+	models.InquiryTypeAffiliatePartner: true,
 	models.InquiryTypeContact:          true,
 	models.InquiryTypeNewsletter:       true,
 	models.InquiryTypeEventListing:     true,

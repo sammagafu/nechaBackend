@@ -11,6 +11,7 @@ import (
 	"github.com/nechaafrica/backend/internal/integration/email"
 	"github.com/nechaafrica/backend/internal/integration/selcom"
 	"github.com/nechaafrica/backend/internal/integration/sms"
+	"github.com/nechaafrica/backend/internal/integration/whatsapp"
 	"github.com/nechaafrica/backend/internal/repository"
 	"github.com/nechaafrica/backend/internal/router"
 	"github.com/nechaafrica/backend/internal/service"
@@ -84,6 +85,14 @@ func main() {
 		AdminTo: cfg.SMS.AdminTo,
 	})
 
+	whatsappClient := whatsapp.NewClient(whatsapp.Config{
+		Enabled: cfg.WhatsApp.Enabled,
+		APIURL:  cfg.WhatsApp.APIURL,
+		APIKey:  cfg.WhatsApp.APIKey,
+		Sender:  cfg.WhatsApp.Sender,
+		AdminTo: cfg.WhatsApp.AdminTo,
+	})
+
 	guestStaySvc := service.NewGuestStayService(guestStayRepo, hotelRepo)
 	authSvc := service.NewAuthService(userRepo, jwtMgr, guestStaySvc)
 	hotelSvc := service.NewHotelService(hotelRepo, catalogRepo)
@@ -92,7 +101,7 @@ func main() {
 	notificationSvc := service.NewNotificationService(notificationRepo)
 	alertSvc := service.NewAlertService(alertRepo)
 	webhookSvc := service.NewWebhookService(webhookRepo, cfg.Webhook.InboundSecret)
-	eventSvc := service.NewEventService(notificationSvc, webhookSvc, userRepo, emailClient, smsClient)
+	eventSvc := service.NewEventService(notificationSvc, webhookSvc, userRepo, emailClient, smsClient, whatsappClient)
 	commissionSvc := service.NewCommissionService(commissionRepo, influencerRepo, eventLogRepo)
 	eventSvc.SetCommissionService(commissionSvc)
 	eventSvc.SetRewardRepository(rewardRepo)

@@ -423,6 +423,10 @@ func (s *CommerceService) RewardBalance(userID uuid.UUID) (int64, []models.Rewar
 	return balance, ledger, nil
 }
 
+func (s *CommerceService) ActiveRewardRule() (*models.RewardRule, error) {
+	return s.rewards.ActiveRule()
+}
+
 func (s *CommerceService) RedeemRewards(userID uuid.UUID, points int64) (int64, error) {
 	if points <= 0 {
 		return 0, apperrors.New(apperrors.ErrBadRequest.Code, "points must be positive", apperrors.ErrBadRequest.Status)

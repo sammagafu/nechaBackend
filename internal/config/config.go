@@ -7,15 +7,16 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	OAuth    OAuthConfig
-	Kkooapp  KkooappConfig
-	Selcom   SelcomConfig
-	Webhook  WebhookConfig
-	Email    EmailConfig
-	SMS      SMSConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	JWT       JWTConfig
+	OAuth     OAuthConfig
+	Kkooapp   KkooappConfig
+	Selcom    SelcomConfig
+	Webhook   WebhookConfig
+	Email     EmailConfig
+	SMS       SMSConfig
+	WhatsApp  WhatsAppConfig
 }
 
 type EmailConfig struct {
@@ -29,6 +30,14 @@ type EmailConfig struct {
 }
 
 type SMSConfig struct {
+	Enabled bool
+	APIURL  string
+	APIKey  string
+	Sender  string
+	AdminTo string
+}
+
+type WhatsAppConfig struct {
 	Enabled bool
 	APIURL  string
 	APIKey  string
@@ -156,6 +165,13 @@ func Load() *Config {
 			APIKey:  getEnv("SMS_API_KEY", ""),
 			Sender:  getEnv("SMS_SENDER", "NECHA"),
 			AdminTo: getEnv("ADMIN_PHONE", ""),
+		},
+		WhatsApp: WhatsAppConfig{
+			Enabled: getEnv("WHATSAPP_ENABLED", "") == "true",
+			APIURL:  getEnv("WHATSAPP_API_URL", ""),
+			APIKey:  getEnv("WHATSAPP_API_KEY", ""),
+			Sender:  getEnv("WHATSAPP_SENDER", "NECHA"),
+			AdminTo: getEnv("WHATSAPP_ADMIN_TO", getEnv("ADMIN_PHONE", "")),
 		},
 	}
 }

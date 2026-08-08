@@ -374,6 +374,9 @@ func (s *AdminService) CreateMenuItem(hotelID string, req dto.CreateMenuItemRequ
 	if menuKind == "" {
 		menuKind = "food"
 	}
+	if !isAllowedMenuKind(menuKind) {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "menu_kind must be food, wellness, or wellness_paid", apperrors.ErrBadRequest.Status)
+	}
 	item := &models.HotelMenuItem{
 		HotelID: uid, Slug: req.Slug, Category: req.Category, Name: req.Name,
 		Description: req.Description, Price: req.Price, Currency: currency,
@@ -397,6 +400,9 @@ func (s *AdminService) UpdateMenuItem(id string, req dto.UpdateMenuItemRequest) 
 			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "menu item not found", apperrors.ErrNotFound.Status)
 		}
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load menu item", apperrors.ErrInternal.Status)
+	}
+	if req.MenuKind != nil && !isAllowedMenuKind(strings.TrimSpace(*req.MenuKind)) {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "menu_kind must be food, wellness, or wellness_paid", apperrors.ErrBadRequest.Status)
 	}
 	applyMenuItemUpdate(item, req)
 	if err := s.catalog.UpdateMenuItem(item); err != nil {
@@ -668,7 +674,7 @@ func applyMenuItemUpdate(item *models.HotelMenuItem, req dto.UpdateMenuItemReque
 		item.Tag = *req.Tag
 	}
 	if req.MenuKind != nil {
-		item.MenuKind = *req.MenuKind
+		item.MenuKind = strings.TrimSpace(*req.MenuKind)
 	}
 	if req.SortOrder != nil {
 		item.SortOrder = *req.SortOrder
@@ -693,6 +699,15 @@ func toMenuItemResponses(items []models.HotelMenuItem) []dto.MenuItemResponse {
 		result = append(result, toAdminMenuItemResponse(&items[i]))
 	}
 	return result
+}
+
+func isAllowedMenuKind(kind string) bool {
+	switch kind {
+	case "food", "wellness", "wellness_paid":
+		return true
+	default:
+		return false
+	}
 }
 
 func applyProductUpdate(p *models.Product, req dto.UpdateProductRequest) {

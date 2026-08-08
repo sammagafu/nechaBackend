@@ -302,6 +302,7 @@ func createCatalogProducts(db *gorm.DB, hotelID uuid.UUID) error {
 			IsFeatured:  p.IsFeatured,
 			IsActive:    true,
 			ImageURL:    p.ImageURL,
+			Images:      models.StringSlice{p.ImageURL, "/assets/1.jpg", "/assets/2.jpg"},
 		})
 	}
 	return db.Create(&products).Error
@@ -324,8 +325,33 @@ func ensureDemoHotel(db *gorm.DB) error {
 
 func syncProductImages(db *gorm.DB) error {
 	imageBySlug := map[string]string{}
-	for _, p := range catalogProducts() {
+	galleryBySlug := map[string][]string{}
+	altPool := []string{"/assets/1.jpg", "/assets/2.jpg", "/assets/3.jpg", "/assets/assets-3.jpg", "/assets/assets-4.jpg", "/assets/assets-5.jpg"}
+	for i, p := range catalogProducts() {
 		imageBySlug[p.Slug] = p.ImageURL
+		alts := make([]string, 0, 3)
+		alts = append(alts, p.ImageURL)
+		for _, alt := range altPool {
+			if alt == p.ImageURL {
+				continue
+			}
+			alts = append(alts, alt)
+			if len(alts) >= 3 {
+				break
+			}
+		}
+		// Rotate so products don't all share the same secondary shots.
+		if len(alts) > 1 {
+			offset := i % (len(alts) - 1)
+			rotated := []string{alts[0]}
+			rotated = append(rotated, alts[1+offset:]...)
+			rotated = append(rotated, alts[1:1+offset]...)
+			alts = rotated
+			if len(alts) > 3 {
+				alts = alts[:3]
+			}
+		}
+		galleryBySlug[p.Slug] = alts
 	}
 
 	var products []models.Product
@@ -343,6 +369,12 @@ func syncProductImages(db *gorm.DB) error {
 			strings.HasPrefix(product.ImageURL, "http://")
 		if needsUpdate {
 			if err := db.Model(&product).Update("image_url", localImage).Error; err != nil {
+				return err
+			}
+		}
+		gallery := galleryBySlug[product.Slug]
+		if len(product.Images) == 0 && len(gallery) > 0 {
+			if err := db.Model(&product).Update("images", models.StringSlice(gallery)).Error; err != nil {
 				return err
 			}
 		}

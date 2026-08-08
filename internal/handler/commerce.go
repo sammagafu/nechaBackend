@@ -261,7 +261,12 @@ func (h *CommerceHandler) UserRewardBalance(c *fiber.Ctx) error {
 	if err != nil {
 		return response.Fail(c, err)
 	}
-	return response.OK(c, fiber.Map{"balance": balance, "ledger": ledger})
+	out := fiber.Map{"balance": balance, "ledger": ledger, "redeem_value_per_point": 10.0, "points_per_currency_unit": 0.01}
+	if rule, ruleErr := h.commerce.ActiveRewardRule(); ruleErr == nil && rule != nil {
+		out["redeem_value_per_point"] = rule.RedeemValuePerPoint
+		out["points_per_currency_unit"] = rule.PointsPerCurrencyUnit
+	}
+	return response.OK(c, out)
 }
 
 func (h *CommerceHandler) UserRedeemRewards(c *fiber.Ctx) error {

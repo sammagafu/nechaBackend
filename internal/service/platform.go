@@ -183,12 +183,13 @@ func (s *PlatformService) configInt64(key string, defaultVal int64) int64 {
 func (s *PlatformService) loadFeatures() dto.PlatformFeatures {
 	return dto.PlatformFeatures{
 		RewardsEnabled:               s.FeatureEnabled(models.ConfigKeyFeatureRewardsEnabled, true),
-		RewardsRedeemEnabled:         s.FeatureEnabled(models.ConfigKeyFeatureRewardsRedeemEnabled, false),
+		RewardsRedeemEnabled:         s.FeatureEnabled(models.ConfigKeyFeatureRewardsRedeemEnabled, true),
 		DiscoveryTicketingEnabled:    s.FeatureEnabled(models.ConfigKeyFeatureDiscoveryTicketingEnabled, false),
 		PartnerPortalEnabled:         s.FeatureEnabled(models.ConfigKeyFeaturePartnerPortalEnabled, true),
 		PartnerProductsManageEnabled: s.FeatureEnabled(models.ConfigKeyFeaturePartnerProductsManageEnabled, false),
 		DualCurrencyEnabled:          s.FeatureEnabled(models.ConfigKeyFeatureDualCurrencyEnabled, true),
 		DistanceDeliveryEnabled:      s.FeatureEnabled(models.ConfigKeyFeatureDistanceDeliveryEnabled, true),
+		B2CShopEnabled:               s.FeatureEnabled(models.ConfigKeyFeatureB2CShopEnabled, true),
 	}
 }
 
@@ -218,6 +219,7 @@ func (s *PlatformService) UpdateSettings(req dto.UpdatePlatformSettingsRequest) 
 			models.ConfigKeyFeaturePartnerProductsManageEnabled: f.PartnerProductsManageEnabled,
 			models.ConfigKeyFeatureDualCurrencyEnabled:          f.DualCurrencyEnabled,
 			models.ConfigKeyFeatureDistanceDeliveryEnabled:      f.DistanceDeliveryEnabled,
+			models.ConfigKeyFeatureB2CShopEnabled:               f.B2CShopEnabled,
 		}
 		for key, enabled := range flags {
 			if err := s.setFeature(key, enabled); err != nil {

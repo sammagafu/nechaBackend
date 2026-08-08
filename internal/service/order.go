@@ -302,15 +302,6 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 	if req.CustomerEmail != "" {
 		meta = append(meta, "email:"+req.CustomerEmail)
 	}
-	if req.Address != "" {
-		meta = append(meta, "address:"+req.Address)
-	}
-	if req.City != "" {
-		meta = append(meta, "city:"+req.City)
-	}
-	if req.Country != "" {
-		meta = append(meta, "country:"+req.Country)
-	}
 	if req.PaymentMethod != "" {
 		meta = append(meta, "payment:"+req.PaymentMethod)
 	}
@@ -327,18 +318,21 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 	}
 
 	order := &models.Order{
-		HotelID:       hotel.ID,
-		UserID:        userID,
-		Type:          models.OrderTypeProduct,
-		Status:        orderStatus,
-		CustomerName:  req.CustomerName,
-		CustomerPhone: req.CustomerPhone,
-		RoomNumber:    req.RoomNumber,
-		TotalAmount:   total,
-		Currency:      currency,
-		Notes:         notes,
-		Category:      models.OrderCategoryProduct,
-		SalesChannel:  models.SalesChannelHotelStorefront,
+		HotelID:         hotel.ID,
+		UserID:          userID,
+		Type:            models.OrderTypeProduct,
+		Status:          orderStatus,
+		CustomerName:    req.CustomerName,
+		CustomerPhone:   req.CustomerPhone,
+		RoomNumber:      req.RoomNumber,
+		TotalAmount:     total,
+		Currency:        currency,
+		Notes:           notes,
+		DeliveryAddress: strings.TrimSpace(req.Address),
+		DeliveryCity:    strings.TrimSpace(req.City),
+		DeliveryCountry: strings.TrimSpace(req.Country),
+		Category:        models.OrderCategoryProduct,
+		SalesChannel:    models.SalesChannelHotelStorefront,
 	}
 	if strings.TrimSpace(req.SalesChannel) == models.SalesChannelB2C {
 		order.SalesChannel = models.SalesChannelB2C

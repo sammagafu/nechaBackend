@@ -47,6 +47,7 @@ type PlatformFeatures struct {
 	PartnerProductsManageEnabled bool `json:"partner_products_manage_enabled"`
 	DualCurrencyEnabled          bool `json:"dual_currency_enabled"`
 	DistanceDeliveryEnabled      bool `json:"distance_delivery_enabled"`
+	B2CShopEnabled               bool `json:"b2c_shop_enabled"`
 }
 
 type UpdatePlatformSettingsRequest struct {

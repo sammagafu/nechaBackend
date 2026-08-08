@@ -89,6 +89,19 @@ func (r *HotelCatalogRepository) ListMenuItemsByKind(hotelID uuid.UUID, menuKind
 	return items, q.Find(&items).Error
 }
 
+// ListMenuItemsByKinds filters by any of the given menu_kind values.
+func (r *HotelCatalogRepository) ListMenuItemsByKinds(hotelID uuid.UUID, menuKinds []string, activeOnly bool) ([]models.HotelMenuItem, error) {
+	var items []models.HotelMenuItem
+	q := r.db.Where("hotel_id = ?", hotelID).Order("sort_order ASC, name ASC")
+	if activeOnly {
+		q = q.Where("is_active = ?", true)
+	}
+	if len(menuKinds) > 0 {
+		q = q.Where("menu_kind IN ?", menuKinds)
+	}
+	return items, q.Find(&items).Error
+}
+
 func (r *HotelCatalogRepository) FindMenuItemByID(id uuid.UUID) (*models.HotelMenuItem, error) {
 	var item models.HotelMenuItem
 	err := r.db.First(&item, "id = ?", id).Error
