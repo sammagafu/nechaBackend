@@ -75,18 +75,7 @@ func (s *PartnerService) ListOrders(userID string) ([]dto.AdminOrderResponse, er
 	if err != nil {
 		return nil, err
 	}
-	orders, err := s.admin.ListOrders(200, 0)
-	if err != nil {
-		return nil, err
-	}
-	filtered := make([]dto.AdminOrderResponse, 0)
-	hid := hotelID.String()
-	for _, o := range orders {
-		if o.HotelID == hid {
-			filtered = append(filtered, o)
-		}
-	}
-	return filtered, nil
+	return s.admin.ListOrdersByHotel(hotelID.String(), 200)
 }
 
 func (s *PartnerService) ListProducts(userID string) ([]dto.AdminProductResponse, error) {
@@ -273,16 +262,7 @@ func (s *PartnerService) ListReferrals(userID string) ([]dto.PartnerReferralResp
 	}
 	out := make([]dto.PartnerReferralResponse, 0, len(referrals))
 	for _, r := range referrals {
-		out = append(out, dto.PartnerReferralResponse{
-			ID:             r.ID.String(),
-			TravellerName:  r.TravellerName,
-			TravellerPhone: r.TravellerPhone,
-			TravellerEmail: r.TravellerEmail,
-			TripContext:    r.TripContext,
-			ReferralToken:  r.ReferralToken,
-			Status:         r.Status,
-			CreatedAt:      r.CreatedAt.UTC().Format(time.RFC3339),
-		})
+		out = append(out, toPartnerReferral(r))
 	}
 	return out, nil
 }
@@ -304,6 +284,7 @@ func (s *PartnerService) CreateReferral(userID string, req dto.CreatePartnerRefe
 		TravellerName:      strings.TrimSpace(req.TravellerName),
 		TravellerPhone:     strings.TrimSpace(req.TravellerPhone),
 		TravellerEmail:     strings.TrimSpace(req.TravellerEmail),
+		Destination:        strings.TrimSpace(req.Destination),
 		TripContext:        strings.TrimSpace(req.TripContext),
 		ReferralToken:      strings.ReplaceAll(uuid.New().String(), "-", "")[:16],
 		Status:             models.BookingReferralStatusPending,
@@ -321,16 +302,29 @@ func (s *PartnerService) CreateReferral(userID string, req dto.CreatePartnerRefe
 	if err := s.bookings.Create(m); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to create referral", apperrors.ErrInternal.Status)
 	}
-	return &dto.PartnerReferralResponse{
-		ID:             m.ID.String(),
-		TravellerName:  m.TravellerName,
-		TravellerPhone: m.TravellerPhone,
-		TravellerEmail: m.TravellerEmail,
-		TripContext:    m.TripContext,
-		ReferralToken:  m.ReferralToken,
-		Status:         m.Status,
-		CreatedAt:      m.CreatedAt.UTC().Format(time.RFC3339),
-	}, nil
+	resp := toPartnerReferral(*m)
+	return &resp, nil
+}
+
+func toPartnerReferral(r models.BookingReferral) dto.PartnerReferralResponse {
+	out := dto.PartnerReferralResponse{
+		ID:             r.ID.String(),
+		TravellerName:  r.TravellerName,
+		TravellerPhone: r.TravellerPhone,
+		TravellerEmail: r.TravellerEmail,
+		Destination:    r.Destination,
+		TripContext:    r.TripContext,
+		ReferralToken:  r.ReferralToken,
+		Status:         r.Status,
+		CreatedAt:      r.CreatedAt.UTC().Format(time.RFC3339),
+	}
+	if r.TripStartDate != nil {
+		out.TripStartDate = r.TripStartDate.Format("2006-01-02")
+	}
+	if r.TripEndDate != nil {
+		out.TripEndDate = r.TripEndDate.Format("2006-01-02")
+	}
+	return out
 }
 
 func toPartnerSettings(hotel *models.Hotel) *dto.PartnerSettingsResponse {

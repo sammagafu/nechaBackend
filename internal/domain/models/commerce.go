@@ -174,6 +174,26 @@ type InventoryReservation struct {
 	UpdatedAt time.Time  `json:"updated_at"`
 }
 
+// PaymentRefund is an immutable mock or live refund attempt. Duplicate callbacks
+// reuse IdempotencyKey so the same refund cannot reverse commission twice.
+type PaymentRefund struct {
+	ID              uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	OrderID         uuid.UUID `gorm:"type:uuid;not null;index" json:"order_id"`
+	Amount          int64     `gorm:"not null" json:"amount"`
+	IdempotencyKey  string    `gorm:"uniqueIndex;not null" json:"idempotency_key"`
+	Reason          string    `json:"reason,omitempty"`
+	IsDemo          bool      `gorm:"default:true" json:"is_demo"`
+	Status          string    `gorm:"default:completed" json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+func (p *PaymentRefund) BeforeCreate(tx *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
+}
+
 func (r *InventoryReservation) BeforeCreate(tx *gorm.DB) error {
 	if r.ID == uuid.Nil {
 		r.ID = uuid.New()

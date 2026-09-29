@@ -36,13 +36,11 @@ func (h *InquiryHandler) AdminList(c *fiber.Ctx) error {
 }
 
 func (h *InquiryHandler) AdminUpdateStatus(c *fiber.Ctx) error {
-	var req struct {
-		Status string `json:"status" validate:"required"`
-	}
+	var req dto.UpdateInquiryRequest
 	if err := bindAndValidate(c, &req); err != nil {
 		return response.Fail(c, err)
 	}
-	if err := h.inquiries.AdminUpdateStatus(c.Params("id"), req.Status); err != nil {
+	if err := h.inquiries.AdminUpdateStatus(c.Params("id"), req); err != nil {
 		return response.Fail(c, err)
 	}
 	return response.OK(c, fiber.Map{"ok": true})

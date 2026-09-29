@@ -40,6 +40,15 @@ type shareBreakdown struct {
 
 func roundShare(v float64) int64 { return int64(math.Round(v)) }
 
+// commissionableGMV excludes delivery (and any negative clamp) from the split base.
+func commissionableGMV(total, deliveryFee int64) int64 {
+	gmv := total - deliveryFee
+	if gmv < 0 {
+		return 0
+	}
+	return gmv
+}
+
 // computeSplit implements the §8.1 category math. tier is the property's commission tier.
 func computeSplit(rule *models.CommissionRule, gmv int64, tier string) shareBreakdown {
 	b := shareBreakdown{GMV: gmv}
@@ -99,9 +108,7 @@ func (s *CommissionService) Generate(order *models.Order, hotel *models.Hotel) e
 	if tier == "" {
 		tier = models.CommissionTierStandard
 	}
-	// GMV excludes any delivery fee bundled into the order total is out of scope here;
-	// TotalAmount is treated as the commissionable GMV.
-	split := computeSplit(rule, order.TotalAmount, tier)
+	split := computeSplit(rule, commissionableGMV(order.TotalAmount, order.DeliveryFee), tier)
 	// B2C channel: no property premium — Necha + supplier only (brief §17.1.4).
 	if order.SalesChannel == models.SalesChannelB2C && split.PropertyShare > 0 {
 		split.NechaShare += split.PropertyShare
@@ -174,6 +181,66 @@ func (s *CommissionService) Void(orderID uuid.UUID) error {
 	}
 	s.logEvent("commission_reversed", "order", &orderID, "")
 	return nil
+}
+
+// ReverseForRefund voids the record on a full refund, or scales unpaid shares on a partial refund.
+func (s *CommissionService) ReverseForRefund(order *models.Order, refundAmount int64) error {
+	if order == nil || refundAmount <= 0 {
+		return nil
+	}
+	rec, err := s.commissions.FindRecordByOrder(order.ID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if rec.Status == models.CommissionStatusVoid {
+		return nil
+	}
+	if rec.Status == models.CommissionStatusPaid {
+		return nil
+	}
+	if refundAmount >= order.TotalAmount || refundAmount >= rec.GMV {
+		return s.Void(order.ID)
+	}
+	scaled := scaleSharesAfterRefund(rec, refundAmount)
+	rec.GMV = scaled.GMV
+	rec.NechaShare = scaled.NechaShare
+	rec.PropertyShare = scaled.PropertyShare
+	rec.SupplierShare = scaled.SupplierShare
+	rec.InfluencerShare = scaled.InfluencerShare
+	rec.PartnerReferralShare = scaled.PartnerReferralShare
+	if err := s.commissions.UpdateRecord(rec); err != nil {
+		return err
+	}
+	s.logEvent("commission_reversed", "order", &order.ID, "partial")
+	return nil
+}
+
+func scaleSharesAfterRefund(rec *models.CommissionRecord, refundAmount int64) shareBreakdown {
+	if rec.GMV <= 0 {
+		return shareBreakdown{}
+	}
+	remain := rec.GMV - refundAmount
+	if remain < 0 {
+		remain = 0
+	}
+	return shareBreakdown{
+		GMV:                  remain,
+		NechaShare:           scaleInt(rec.NechaShare, remain, rec.GMV),
+		PropertyShare:        scaleInt(rec.PropertyShare, remain, rec.GMV),
+		SupplierShare:        scaleInt(rec.SupplierShare, remain, rec.GMV),
+		InfluencerShare:      scaleInt(rec.InfluencerShare, remain, rec.GMV),
+		PartnerReferralShare: scaleInt(rec.PartnerReferralShare, remain, rec.GMV),
+	}
+}
+
+func scaleInt(value, remain, original int64) int64 {
+	if original <= 0 {
+		return 0
+	}
+	return roundShare(float64(value) * float64(remain) / float64(original))
 }
 
 func (s *CommissionService) ListRecords() ([]models.CommissionRecord, error) {

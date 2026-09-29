@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/nechaafrica/backend/internal/domain/models"
@@ -109,6 +110,18 @@ func (r *HotelCatalogRepository) FindMenuItemByID(id uuid.UUID) (*models.HotelMe
 		return nil, err
 	}
 	return &item, nil
+}
+
+func (r *HotelCatalogRepository) FindActiveMenuItemForHotel(hotelID uuid.UUID, idOrSlug string) (*models.HotelMenuItem, error) {
+	var item models.HotelMenuItem
+	q := r.db.Where("hotel_id = ? AND is_active = ?", hotelID, true)
+	if uid, err := uuid.Parse(strings.TrimSpace(idOrSlug)); err == nil {
+		err := q.Where("id = ?", uid).First(&item).Error
+		return &item, err
+	}
+	key := strings.TrimSpace(idOrSlug)
+	err := q.Where("slug = ? OR name = ?", key, key).First(&item).Error
+	return &item, err
 }
 
 func (r *HotelCatalogRepository) CreateMenuItem(item *models.HotelMenuItem) error {

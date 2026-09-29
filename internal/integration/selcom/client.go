@@ -26,11 +26,14 @@ type Client interface {
 }
 
 type HTTPClient struct {
-	baseURL    string
-	apiKey     string
-	apiSecret  string
-	vendor     string
-	httpClient *http.Client
+	baseURL           string
+	apiKey            string
+	apiSecret         string
+	vendor            string
+	pin               string
+	payoutUtilityCode string
+	payoutMSISDN      string
+	httpClient        *http.Client
 }
 
 func NewClient(cfg config.SelcomConfig) *HTTPClient {
@@ -38,11 +41,18 @@ func NewClient(cfg config.SelcomConfig) *HTTPClient {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
+	utility := strings.ToUpper(strings.TrimSpace(cfg.PayoutUtilityCode))
+	if utility == "" {
+		utility = "CASHIN"
+	}
 	return &HTTPClient{
-		baseURL:   strings.TrimRight(cfg.BaseURL, "/"),
-		apiKey:    cfg.APIKey,
-		apiSecret: cfg.APISecret,
-		vendor:    cfg.Vendor,
+		baseURL:           strings.TrimRight(cfg.BaseURL, "/"),
+		apiKey:            cfg.APIKey,
+		apiSecret:         cfg.APISecret,
+		vendor:            cfg.Vendor,
+		pin:               cfg.Pin,
+		payoutUtilityCode: utility,
+		payoutMSISDN:      NormalizePhone(cfg.PayoutMSISDN),
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -111,18 +121,104 @@ func (c *HTTPClient) GetOrderStatus(ctx context.Context, orderID string) (*APIRe
 }
 
 func (c *HTTPClient) DisburseWallet(ctx context.Context, input DisburseInput) (*DisburseResult, error) {
-	_ = ctx
-	if strings.TrimSpace(input.Account) == "" {
-		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "payout account is required", apperrors.ErrBadRequest.Status)
+	payload, signedFields, transID, err := c.disbursePayload(input)
+	if err != nil {
+		return nil, err
 	}
-	ref := strings.TrimSpace(input.Reference)
+
+	var resp APIResponse
+	if err := c.post(ctx, "/v1/walletcashin/process", payload, signedFields, &resp); err != nil {
+		if queried, qerr := c.queryWalletCashin(ctx, transID); qerr == nil {
+			return walletCashinResult(queried, transID)
+		}
+		return nil, err
+	}
+	return walletCashinResult(&resp, transID)
+}
+
+func (c *HTTPClient) disbursePayload(input DisburseInput) (map[string]interface{}, []string, string, error) {
+	if strings.TrimSpace(c.vendor) == "" || strings.TrimSpace(c.pin) == "" {
+		return nil, nil, "", apperrors.New(apperrors.ErrBadRequest.Code, "SELCOM_VENDOR and SELCOM_PIN are required for live payouts", apperrors.ErrBadRequest.Status)
+	}
+	account := NormalizePhone(input.Account)
+	if account == "" {
+		return nil, nil, "", apperrors.New(apperrors.ErrBadRequest.Code, "payout account is required", apperrors.ErrBadRequest.Status)
+	}
+	if input.Amount <= 0 {
+		return nil, nil, "", apperrors.New(apperrors.ErrBadRequest.Code, "payout amount must be greater than zero", apperrors.ErrBadRequest.Status)
+	}
+	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
+	if currency != "" && currency != "TZS" {
+		return nil, nil, "", apperrors.New(apperrors.ErrBadRequest.Code, "live wallet cash-in supports TZS only", apperrors.ErrBadRequest.Status)
+	}
+
+	transID := compactTransID(input.Reference)
+	utility := c.payoutUtilityCode
+	if utility == "" {
+		utility = "CASHIN"
+	}
+	payload := map[string]interface{}{
+		"transid":     transID,
+		"utilitycode": utility,
+		"utilityref":  account,
+		"amount":      input.Amount,
+		"vendor":      c.vendor,
+		"pin":         c.pin,
+	}
+	signed := []string{"transid", "utilitycode", "utilityref", "amount", "vendor", "pin"}
+	if c.payoutMSISDN != "" {
+		payload["msisdn"] = c.payoutMSISDN
+		signed = append(signed, "msisdn")
+	}
+	return payload, signed, transID, nil
+}
+
+func (c *HTTPClient) queryWalletCashin(ctx context.Context, transID string) (*APIResponse, error) {
+	query := url.Values{"transid": {transID}}
+	var resp APIResponse
+	if err := c.get(ctx, "/v1/walletcashin/query", query, []string{"transid"}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func walletCashinResult(resp *APIResponse, transID string) (*DisburseResult, error) {
+	if resp == nil {
+		return nil, apperrors.New(apperrors.ErrExternalAPI.Code, "empty selcom payout response", apperrors.ErrExternalAPI.Status)
+	}
+	if !selcomSuccess(resp) {
+		msg := strings.TrimSpace(resp.Message)
+		if msg == "" {
+			msg = "selcom payout was not accepted"
+		}
+		return nil, apperrors.New(apperrors.ErrExternalAPI.Code, msg, apperrors.ErrExternalAPI.Status)
+	}
+	ref := strings.TrimSpace(resp.Reference)
 	if ref == "" {
-		ref = "payout"
+		ref = transID
 	}
-	return &DisburseResult{
-		Reference: "SELCOM-DISB-" + ref,
-		Status:    "completed",
-	}, nil
+	return &DisburseResult{Reference: ref, Status: "completed"}, nil
+}
+
+func selcomSuccess(resp *APIResponse) bool {
+	return resp.ResultCode == "000" || strings.EqualFold(resp.Result, "SUCCESS")
+}
+
+func compactTransID(raw string) string {
+	var b strings.Builder
+	for _, r := range raw {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	id := b.String()
+	if id == "" {
+		id = fmt.Sprintf("P%d", time.Now().UnixNano())
+	}
+	if len(id) > 32 {
+		id = id[:32]
+	}
+	return id
 }
 
 func (c *HTTPClient) post(ctx context.Context, path string, payload map[string]interface{}, signedFields []string, out *APIResponse) error {

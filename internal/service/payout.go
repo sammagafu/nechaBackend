@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -186,10 +187,13 @@ func (s *PayoutService) Release(batchID uuid.UUID) (*models.PayoutBatch, error) 
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load batch", apperrors.ErrInternal.Status)
 	}
 	if batch.Status == models.PayoutBatchStatusReleased {
-		return batch, nil
+		return batch, nil // idempotent — never disburse the same batch twice
 	}
 
 	disburseRef, disburseStatus := s.disburseBatch(batch)
+	if disburseStatus == DisbursementStatusFailed {
+		return nil, apperrors.New(apperrors.ErrInternal.Code, "disbursement failed; batch not released", apperrors.ErrInternal.Status)
+	}
 
 	now := time.Now()
 	err = s.payouts.Transaction(func(tx *gorm.DB) error {
@@ -236,12 +240,22 @@ func (s *PayoutService) disburseBatch(batch *models.PayoutBatch) (ref, status st
 	if err != nil {
 		return "", DisbursementStatusFailed
 	}
-	return result.Reference, DisbursementStatusCompleted
+	return result.Reference, disbursementStatusFromResult(result)
+}
+
+func disbursementStatusFromResult(result *selcom.DisburseResult) string {
+	if result == nil {
+		return DisbursementStatusFailed
+	}
+	if result.Status == "demo_completed" || strings.HasPrefix(result.Reference, "MOCK-DISB") {
+		return "demo_completed"
+	}
+	return DisbursementStatusCompleted
 }
 
 func (s *PayoutService) payoutAccountFor(batch *models.PayoutBatch) (account, narrative string) {
 	switch batch.PayeeType {
-	case models.PayeeTypeProperty:
+	case models.PayeeTypeProperty, models.PayeeTypePartnerReferral, models.PayeeTypeTourOperator:
 		if s.hotels == nil {
 			return "", ""
 		}
@@ -249,7 +263,11 @@ func (s *PayoutService) payoutAccountFor(batch *models.PayoutBatch) (account, na
 		if err != nil {
 			return "", ""
 		}
-		return hotel.SelcomPayoutAccount, fmt.Sprintf("Necha payout %s", hotel.Name)
+		label := "payout"
+		if batch.PayeeType != models.PayeeTypeProperty {
+			label = "referral payout"
+		}
+		return hotel.SelcomPayoutAccount, fmt.Sprintf("Necha %s %s", label, hotel.Name)
 	case models.PayeeTypeInfluencer:
 		if s.influencers == nil {
 			return "", ""

@@ -223,9 +223,15 @@ type AdminOrderDetailResponse struct {
 	AdminOrderResponse
 	TableNumber     string                   `json:"table_number,omitempty"`
 	Notes           string                   `json:"notes,omitempty"`
-	PaymentProvider string                   `json:"payment_provider,omitempty"`
-	PaymentStatus   string                   `json:"payment_status,omitempty"`
-	PaymentRef      string                   `json:"payment_ref,omitempty"`
+	PaymentProvider   string `json:"payment_provider,omitempty"`
+	PaymentStatus     string `json:"payment_status,omitempty"`
+	PaymentRef        string `json:"payment_ref,omitempty"`
+	PaymentIsDemo     bool   `json:"payment_is_demo"`
+	PaymentDisclaimer string `json:"payment_disclaimer,omitempty"`
+	RefundedAmount    int64  `json:"refunded_amount,omitempty"`
+	ReferralCode           string `json:"referral_code,omitempty"`
+	ReferredByInfluencerID string `json:"referred_by_influencer_id,omitempty"`
+	ReferredByPartnerID    string `json:"referred_by_partner_id,omitempty"`
 	UpdatedAt       string                   `json:"updated_at"`
 	Items           []AdminOrderItemResponse `json:"items"`
 }

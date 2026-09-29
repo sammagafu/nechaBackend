@@ -488,6 +488,22 @@ func (s *AdminService) ListOrders(limit, offset int) ([]dto.AdminOrderResponse, 
 	return result, nil
 }
 
+func (s *AdminService) ListOrdersByHotel(hotelID string, limit int) ([]dto.AdminOrderResponse, error) {
+	uid, err := uuid.Parse(hotelID)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "invalid hotel id", apperrors.ErrBadRequest.Status)
+	}
+	orders, err := s.orders.ListByHotel(uid, limit)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list hotel orders", apperrors.ErrInternal.Status)
+	}
+	result := make([]dto.AdminOrderResponse, 0, len(orders))
+	for _, o := range orders {
+		result = append(result, toAdminOrderResponse(&o))
+	}
+	return result, nil
+}
+
 func (s *AdminService) UpdateOrderStatus(id, status string) (*dto.AdminOrderResponse, error) {
 	uid, err := uuid.Parse(id)
 	if err != nil {
@@ -842,13 +858,23 @@ func toAdminOrderDetailResponse(o *models.Order) dto.AdminOrderDetailResponse {
 			UnitPrice: item.UnitPrice, TotalPrice: item.TotalPrice, Notes: item.Notes,
 		})
 	}
-	return dto.AdminOrderDetailResponse{
+	resp := dto.AdminOrderDetailResponse{
 		AdminOrderResponse: base,
 		TableNumber: o.TableNumber, Notes: o.Notes,
 		PaymentProvider: o.PaymentProvider, PaymentStatus: o.PaymentStatus,
-		PaymentRef: o.PaymentRef, UpdatedAt: o.UpdatedAt.Format(time.RFC3339),
+		PaymentRef: o.PaymentRef, PaymentIsDemo: o.PaymentIsDemo || o.PaymentProvider == PaymentProviderSelcomMock,
+		PaymentDisclaimer: demoDisclaimer(o.PaymentIsDemo || o.PaymentProvider == PaymentProviderSelcomMock),
+		RefundedAmount: o.RefundedAmount, ReferralCode: o.ReferralCode,
+		UpdatedAt: o.UpdatedAt.Format(time.RFC3339),
 		Items: items,
 	}
+	if o.ReferredByInfluencerID != nil {
+		resp.ReferredByInfluencerID = o.ReferredByInfluencerID.String()
+	}
+	if o.ReferredByPartnerID != nil {
+		resp.ReferredByPartnerID = o.ReferredByPartnerID.String()
+	}
+	return resp
 }
 
 func toAdminReservationResponse(r *models.Reservation) dto.AdminReservationResponse {

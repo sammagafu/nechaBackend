@@ -40,6 +40,9 @@ type PartnerReferralResponse struct {
 	TravellerName  string `json:"traveller_name"`
 	TravellerPhone string `json:"traveller_phone"`
 	TravellerEmail string `json:"traveller_email"`
+	Destination    string `json:"destination"`
+	TripStartDate  string `json:"trip_start_date,omitempty"`
+	TripEndDate    string `json:"trip_end_date,omitempty"`
 	TripContext    string `json:"trip_context"`
 	ReferralToken  string `json:"referral_token"`
 	Status         string `json:"status"`
@@ -50,6 +53,7 @@ type CreatePartnerReferralRequest struct {
 	TravellerName  string `json:"traveller_name" validate:"required"`
 	TravellerPhone string `json:"traveller_phone" validate:"required"`
 	TravellerEmail string `json:"traveller_email"`
+	Destination    string `json:"destination"`
 	TripStartDate  string `json:"trip_start_date"`
 	TripEndDate    string `json:"trip_end_date"`
 	TripContext    string `json:"trip_context"`
@@ -57,6 +61,7 @@ type CreatePartnerReferralRequest struct {
 
 type DiscoveryOrderRequest struct {
 	DiscoverySlug string `json:"discovery_slug" validate:"required"`
+	HotelCode     string `json:"hotel_code"`
 	CustomerName  string `json:"customer_name" validate:"required"`
 	CustomerPhone string `json:"customer_phone" validate:"required"`
 	CustomerEmail string `json:"customer_email"`

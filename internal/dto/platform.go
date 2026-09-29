@@ -12,6 +12,7 @@ type SubmitGuestRequestRequest struct {
 type GuestRequestResponse struct {
 	ID         string `json:"id"`
 	HotelID    string `json:"hotel_id"`
+	HotelName  string `json:"hotel_name,omitempty"`
 	Category   string `json:"category"`
 	Status     string `json:"status"`
 	GuestName  string `json:"guest_name"`
@@ -29,13 +30,24 @@ type DeliveryZoneResponse struct {
 	FreeThresholdTZS int64  `json:"free_threshold_tzs"`
 }
 
+type CalculatorAssumptions struct {
+	FoundingTierMonths int64   `json:"founding_tier_months"`
+	AvgSpendTZS        int64   `json:"avg_spend_tzs"`
+	HotelPremiumRate   float64 `json:"hotel_premium_rate"`
+	FoundingHotelShare float64 `json:"founding_hotel_share"`
+	StandardHotelShare float64 `json:"standard_hotel_share"`
+}
+
 type PlatformSettingsResponse struct {
 	TzsToUsdRate             float64                `json:"tzs_to_usd_rate"`
 	FreeDeliveryThresholdTZS int64                  `json:"free_delivery_threshold_tzs"`
 	DefaultDeliveryFeeTZS    int64                  `json:"default_delivery_fee_tzs"`
 	DeliveryBaseFeeTZS       int64                  `json:"delivery_base_fee_tzs"`
 	DeliveryPerKmTZS         int64                  `json:"delivery_per_km_tzs"`
+	FoundingTierMonths       int64                  `json:"founding_tier_months"`
+	DemoEnvironment          bool                   `json:"demo_environment"`
 	Features                 PlatformFeatures       `json:"features"`
+	Calculator               CalculatorAssumptions  `json:"calculator"`
 	Zones                    []DeliveryZoneResponse `json:"zones"`
 }
 

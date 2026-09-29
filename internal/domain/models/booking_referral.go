@@ -21,13 +21,14 @@ type BookingReferral struct {
 	ID uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	// ReferringPartnerID must point to a Hotel with partner_type in
 	// {tour_operator, travel_agent, airline}.
-	ReferringPartnerID uuid.UUID `gorm:"type:uuid;index;not null" json:"referring_partner_id"`
-	TravellerName      string    `json:"traveller_name"`
-	TravellerPhone     string    `gorm:"index" json:"traveller_phone"`
-	TravellerEmail     string    `json:"traveller_email"`
+	ReferringPartnerID uuid.UUID  `gorm:"type:uuid;index;not null" json:"referring_partner_id"`
+	TravellerName      string     `json:"traveller_name"`
+	TravellerPhone     string     `gorm:"index" json:"traveller_phone"`
+	TravellerEmail     string     `json:"traveller_email"`
+	Destination        string     `json:"destination"`
 	TripStartDate      *time.Time `json:"trip_start_date,omitempty"`
 	TripEndDate        *time.Time `json:"trip_end_date,omitempty"`
-	TripContext        string    `json:"trip_context"`
+	TripContext        string     `json:"trip_context"`
 	// ReferralToken is the unique link parameter sent to the traveller, functioning like a
 	// hotel's QR-encoded URL but pre-filling referral + trip context.
 	ReferralToken    string     `gorm:"uniqueIndex;not null" json:"referral_token"`

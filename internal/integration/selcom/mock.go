@@ -44,8 +44,8 @@ func (m *MockClient) DisburseWallet(ctx context.Context, input DisburseInput) (*
 		ref = "DISB-MOCK"
 	}
 	return &DisburseResult{
-		Reference: "DISB-" + ref,
-		Status:    "completed",
+		Reference: "MOCK-DISB-" + ref,
+		Status:    "demo_completed",
 	}, nil
 }
 

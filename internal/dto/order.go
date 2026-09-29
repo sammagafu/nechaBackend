@@ -1,10 +1,11 @@
 package dto
 
 type FoodOrderItemRequest struct {
-	Name      string `json:"name" validate:"required"`
-	Quantity  int    `json:"quantity" validate:"required,min=1"`
-	UnitPrice int64  `json:"unit_price" validate:"required,min=0"`
-	Notes     string `json:"notes"`
+	MenuItemID string `json:"menu_item_id"`
+	Name       string `json:"name"`
+	Quantity   int    `json:"quantity" validate:"required,min=1"`
+	UnitPrice  int64  `json:"unit_price"`
+	Notes      string `json:"notes"`
 }
 
 type FoodOrderRequest struct {
@@ -29,7 +30,7 @@ type ProductOrderItemRequest struct {
 }
 
 type ProductOrderRequest struct {
-	HotelCode      string                    `json:"hotel_code"`
+	HotelCode      string                    `json:"hotel_code" validate:"required"`
 	CustomerName   string                    `json:"customer_name" validate:"required"`
 	CustomerPhone  string                    `json:"customer_phone" validate:"required"`
 	CustomerEmail  string                    `json:"customer_email"`
@@ -77,6 +78,9 @@ type OrderResponse struct {
 	PaymentProvider  string `json:"payment_provider,omitempty"`
 	PaymentStatus    string `json:"payment_status,omitempty"`
 	PaymentRef       string `json:"payment_ref,omitempty"`
+	PaymentIsDemo    bool   `json:"payment_is_demo"`
+	PaymentDisclaimer string `json:"payment_disclaimer,omitempty"`
+	RefundedAmount   int64  `json:"refunded_amount,omitempty"`
 	PaymentRequired  bool   `json:"payment_required"`
 	PaymentURL       string `json:"payment_url,omitempty"`
 	CreatedAt        string `json:"created_at"`

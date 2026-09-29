@@ -17,6 +17,7 @@ import (
 
 type OrderService struct {
 	hotels      *repository.HotelRepository
+	catalog     *repository.HotelCatalogRepository
 	orders      *repository.OrderRepository
 	discovery   *repository.DiscoveryRepository
 	events      *EventService
@@ -30,6 +31,7 @@ type OrderService struct {
 
 func NewOrderService(
 	hotels *repository.HotelRepository,
+	catalog *repository.HotelCatalogRepository,
 	orders *repository.OrderRepository,
 	discovery *repository.DiscoveryRepository,
 	events *EventService,
@@ -42,6 +44,7 @@ func NewOrderService(
 ) *OrderService {
 	return &OrderService{
 		hotels:      hotels,
+		catalog:     catalog,
 		orders:      orders,
 		discovery:   discovery,
 		events:      events,
@@ -52,6 +55,14 @@ func NewOrderService(
 		bookings:    bookings,
 		rewards:     rewards,
 	}
+}
+
+func productStockInsufficient(qty, stock int) bool {
+	return qty > stock
+}
+
+func menuItemPayable(menuKind string) bool {
+	return strings.EqualFold(strings.TrimSpace(menuKind), "wellness_paid")
 }
 
 // resolveAttribution captures referral attribution once, at order placement (brief §3.7).
@@ -84,15 +95,44 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load hotel", apperrors.ErrInternal.Status)
 	}
 
+	if s.catalog == nil {
+		return nil, apperrors.New(apperrors.ErrInternal.Code, "menu catalog unavailable", apperrors.ErrInternal.Status)
+	}
+
 	var total int64
 	items := make([]models.OrderItem, 0, len(req.Items))
+	payableCount := 0
 	for _, item := range req.Items {
-		lineTotal := item.UnitPrice * int64(item.Quantity)
+		key := strings.TrimSpace(item.MenuItemID)
+		if key == "" {
+			key = strings.TrimSpace(item.Name)
+		}
+		if key == "" {
+			return nil, apperrors.New(apperrors.ErrValidation.Code, "menu_item_id is required", apperrors.ErrValidation.Status)
+		}
+		menuItem, err := s.catalog.FindActiveMenuItemForHotel(hotel.ID, key)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, apperrors.New(apperrors.ErrBadRequest.Code, "menu item not found for this hotel", apperrors.ErrBadRequest.Status)
+			}
+			return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load menu item", apperrors.ErrInternal.Status)
+		}
+		payable := menuItemPayable(menuItem.MenuKind)
+		if req.RequirePayment && !payable {
+			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "in-house items cannot be charged on Necha", apperrors.ErrBadRequest.Status)
+		}
+		if !req.RequirePayment && payable {
+			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "external wellness items require paid checkout", apperrors.ErrBadRequest.Status)
+		}
+		if payable {
+			payableCount++
+		}
+		lineTotal := menuItem.Price * int64(item.Quantity)
 		total += lineTotal
 		items = append(items, models.OrderItem{
-			Name:       item.Name,
+			Name:       menuItem.Name,
 			Quantity:   item.Quantity,
-			UnitPrice:  item.UnitPrice,
+			UnitPrice:  menuItem.Price,
 			TotalPrice: lineTotal,
 			Notes:      item.Notes,
 		})
@@ -115,12 +155,17 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 		SalesChannel:  models.SalesChannelHotelStorefront,
 	}
 	if req.RequirePayment && total > 0 {
+		if payableCount == 0 {
+			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "no payable items in this order", apperrors.ErrBadRequest.Status)
+		}
 		order.Category = models.OrderCategorySpaExternal
 		if s.payments != nil && s.payments.Enabled() {
 			order.Status = models.OrderStatusPending
 		} else {
 			order.Status = models.OrderStatusConfirmed
 		}
+	} else {
+		order.Status = models.OrderStatusConfirmed
 	}
 
 	if err := s.orders.Create(order); err != nil {
@@ -156,10 +201,7 @@ func (s *OrderService) CreateFoodOrder(ctx context.Context, req dto.FoodOrderReq
 			_ = s.orders.Update(loaded)
 			return nil, err
 		}
-		resp.PaymentRequired = session.PaymentRequired
-		resp.PaymentURL = session.PaymentURL
-		resp.PaymentProvider = session.PaymentProvider
-		resp.PaymentStatus = session.PaymentStatus
+		applyCheckoutSession(resp, loaded, session)
 		if s.events != nil && !session.PaymentRequired {
 			s.events.OrderCreated(loaded, hotel)
 		}
@@ -181,9 +223,9 @@ func nechaOrderRef(id uuid.UUID) string {
 }
 
 func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOrderRequest, userID *uuid.UUID) (*dto.OrderResponse, error) {
-	hotelCode := req.HotelCode
+	hotelCode := strings.TrimSpace(req.HotelCode)
 	if hotelCode == "" {
-		hotelCode = "SEACLIFF24"
+		return nil, apperrors.New(apperrors.ErrValidation.Code, "hotel_code is required", apperrors.ErrValidation.Status)
 	}
 
 	hotel, err := s.hotels.FindByCode(hotelCode)
@@ -223,8 +265,7 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 			}
 			return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load product", apperrors.ErrInternal.Status)
 		}
-		trackStock := product.Stock > 0
-		if trackStock && item.Quantity > product.Stock {
+		if productStockInsufficient(item.Quantity, product.Stock) {
 			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "insufficient stock for "+product.Name, apperrors.ErrBadRequest.Status)
 		}
 		if product.Currency != "" {
@@ -239,9 +280,10 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 			quantity:   item.Quantity,
 			unitPrice:  product.Price,
 			lineTotal:  lineTotal,
-			trackStock: trackStock,
+			trackStock: true,
 		})
 	}
+	appliedDeliveryFee := int64(0)
 	if req.DeliveryFee > 0 || s.platform != nil {
 		zoneCode := strings.TrimSpace(req.DeliveryZoneCode)
 		if zoneCode == "" {
@@ -265,8 +307,10 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 		if req.DeliveryFee != expectedFee {
 			return nil, apperrors.New(apperrors.ErrBadRequest.Code, "delivery fee does not match zone pricing", apperrors.ErrBadRequest.Status)
 		}
+		appliedDeliveryFee = expectedFee
 		total += expectedFee
 	} else if req.DeliveryFee > 0 {
+		appliedDeliveryFee = req.DeliveryFee
 		total += req.DeliveryFee
 	}
 
@@ -331,6 +375,8 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 		DeliveryAddress: strings.TrimSpace(req.Address),
 		DeliveryCity:    strings.TrimSpace(req.City),
 		DeliveryCountry: strings.TrimSpace(req.Country),
+		DeliveryFee:     appliedDeliveryFee,
+		StockHeld:       true,
 		Category:        models.OrderCategoryProduct,
 		SalesChannel:    models.SalesChannelHotelStorefront,
 	}
@@ -409,13 +455,11 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 		if err != nil {
 			loaded.Status = models.OrderStatusFailed
 			loaded.PaymentStatus = PaymentStatusFailed
+			s.releaseHeldStock(loaded)
 			_ = s.orders.Update(loaded)
 			return nil, err
 		}
-		resp.PaymentRequired = session.PaymentRequired
-		resp.PaymentURL = session.PaymentURL
-		resp.PaymentProvider = session.PaymentProvider
-		resp.PaymentStatus = session.PaymentStatus
+		applyCheckoutSession(resp, loaded, session)
 		return resp, nil
 	}
 
@@ -423,6 +467,19 @@ func (s *OrderService) CreateProductOrder(ctx context.Context, req dto.ProductOr
 		s.events.OrderCreated(loaded, hotel)
 	}
 	return resp, nil
+}
+
+func (s *OrderService) releaseHeldStock(order *models.Order) {
+	if order == nil || !order.StockHeld {
+		return
+	}
+	for _, item := range order.Items {
+		if item.ProductID == nil || item.Quantity <= 0 {
+			continue
+		}
+		_ = s.hotels.RestoreProductStock(*item.ProductID, item.Quantity)
+	}
+	order.StockHeld = false
 }
 
 func (s *OrderService) Track(ctx context.Context, id uuid.UUID) (*dto.OrderTrackResponse, error) {
@@ -478,8 +535,10 @@ func (s *OrderService) CreateDiscoveryOrder(ctx context.Context, req dto.Discove
 	var hotel *models.Hotel
 	if item.HotelID != nil {
 		hotel, err = s.hotels.FindByID(*item.HotelID)
+	} else if code := strings.TrimSpace(req.HotelCode); code != "" {
+		hotel, err = s.hotels.FindByCode(code)
 	} else {
-		hotel, err = s.hotels.FindByCode("SEACLIFF24")
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "hotel_code is required for this listing", apperrors.ErrBadRequest.Status)
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -543,10 +602,7 @@ func (s *OrderService) CreateDiscoveryOrder(ctx context.Context, req dto.Discove
 			_ = s.orders.Update(loaded)
 			return nil, err
 		}
-		resp.PaymentRequired = session.PaymentRequired
-		resp.PaymentURL = session.PaymentURL
-		resp.PaymentProvider = session.PaymentProvider
-		resp.PaymentStatus = session.PaymentStatus
+		applyCheckoutSession(resp, loaded, session)
 		if s.events != nil && !session.PaymentRequired {
 			s.events.OrderCreated(loaded, hotel)
 		}
@@ -554,6 +610,23 @@ func (s *OrderService) CreateDiscoveryOrder(ctx context.Context, req dto.Discove
 		s.events.OrderCreated(loaded, hotel)
 	}
 	return resp, nil
+}
+
+func applyCheckoutSession(resp *dto.OrderResponse, order *models.Order, session *CheckoutSession) {
+	if resp == nil || session == nil {
+		return
+	}
+	resp.PaymentRequired = session.PaymentRequired
+	resp.PaymentURL = session.PaymentURL
+	resp.PaymentProvider = session.PaymentProvider
+	resp.PaymentStatus = session.PaymentStatus
+	if order == nil {
+		return
+	}
+	isDemo := order.PaymentIsDemo || order.PaymentProvider == PaymentProviderSelcomMock
+	resp.PaymentIsDemo = isDemo
+	resp.PaymentDisclaimer = demoDisclaimer(isDemo)
+	resp.PaymentRef = order.PaymentRef
 }
 
 func toOrderResponse(o *models.Order) *dto.OrderResponse {
@@ -581,11 +654,21 @@ func toOrderResponse(o *models.Order) *dto.OrderResponse {
 		Currency:        o.Currency,
 		Items:           items,
 		Notes:           o.Notes,
-		PaymentProvider: o.PaymentProvider,
-		PaymentStatus:   o.PaymentStatus,
-		PaymentRef:      o.PaymentRef,
-		CreatedAt:       o.CreatedAt.UTC().Format(time.RFC3339),
+		PaymentProvider:   o.PaymentProvider,
+		PaymentStatus:     o.PaymentStatus,
+		PaymentRef:        o.PaymentRef,
+		PaymentIsDemo:     o.PaymentIsDemo || o.PaymentProvider == PaymentProviderSelcomMock,
+		PaymentDisclaimer: demoDisclaimer(o.PaymentIsDemo || o.PaymentProvider == PaymentProviderSelcomMock),
+		RefundedAmount:    o.RefundedAmount,
+		CreatedAt:         o.CreatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func demoDisclaimer(isDemo bool) string {
+	if isDemo {
+		return DemoPaymentDisclaimer
+	}
+	return ""
 }
 
 func referralFromNotes(notes string) string {

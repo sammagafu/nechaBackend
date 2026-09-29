@@ -169,6 +169,7 @@ func (s *CommerceService) CreateBookingReferral(req dto.CreateBookingReferralReq
 		TravellerName:      strings.TrimSpace(req.TravellerName),
 		TravellerPhone:     strings.TrimSpace(req.TravellerPhone),
 		TravellerEmail:     strings.TrimSpace(req.TravellerEmail),
+		Destination:        strings.TrimSpace(req.Destination),
 		TripContext:        strings.TrimSpace(req.TripContext),
 		ReferralToken:      strings.ReplaceAll(uuid.New().String(), "-", "")[:16],
 		Status:             models.BookingReferralStatusPending,

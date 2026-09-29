@@ -27,3 +27,16 @@ func TestValidateStructMinInt(t *testing.T) {
 		t.Fatal("expected min=2 validation error")
 	}
 }
+
+type productOrderHotelFixture struct {
+	HotelCode string `json:"hotel_code" validate:"required"`
+}
+
+func TestProductOrderRequiresHotelCode(t *testing.T) {
+	if err := validateStruct(&productOrderHotelFixture{HotelCode: ""}); err == nil {
+		t.Fatal("expected hotel_code required")
+	}
+	if err := validateStruct(&productOrderHotelFixture{HotelCode: "HYATT01"}); err != nil {
+		t.Fatalf("expected hotel_code to pass, got %v", err)
+	}
+}

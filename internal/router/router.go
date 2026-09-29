@@ -131,6 +131,10 @@ func Setup(app *fiber.App, h Handlers) {
 	payments.Get("/status", h.Payment.PaymentStatus)
 	if h.Selcom.MockMode {
 		payments.Post("/mock/complete", h.Payment.MockComplete)
+		payments.Post("/mock/refund", h.Payment.MockRefund)
+		payments.Post("/mock/expire-hold", h.Payment.MockExpireHold)
+		payments.Post("/mock/reserve-capacity", h.Payment.MockReserveCapacity)
+		payments.Post("/mock/expire-reservations", h.Payment.MockExpireReservations)
 	}
 
 	admin := api.Group("/admin", middleware.Auth(h.JWT), middleware.RequireAdmin())
@@ -174,6 +178,7 @@ func Setup(app *fiber.App, h Handlers) {
 	admin.Patch("/webhooks/:id", h.Messaging.AdminUpdateWebhook)
 	admin.Get("/webhooks/deliveries", h.Messaging.AdminListWebhookDeliveries)
 	admin.Get("/inquiries", h.Inquiry.AdminList)
+	admin.Get("/guest-requests", h.Platform.AdminListGuestRequests)
 	admin.Patch("/inquiries/:id/status", h.Inquiry.AdminUpdateStatus)
 
 	// Commerce engine (brief §3, §8) — admin only; commission rates never exposed to guests/partners.

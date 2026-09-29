@@ -46,6 +46,8 @@ func NewOrderRepository(db *gorm.DB) *OrderRepository {
 	return &OrderRepository{db: db}
 }
 
+func (r *OrderRepository) DB() *gorm.DB { return r.db }
+
 func (r *OrderRepository) Create(order *models.Order) error {
 	return r.db.Create(order).Error
 }
@@ -199,8 +201,11 @@ func (r *OrderRepository) DailyMetricsByHotelSince(hotelID uuid.UUID, since time
 }
 
 func (r *OrderRepository) ListByHotel(hotelID uuid.UUID, limit int) ([]models.Order, error) {
-	if limit <= 0 || limit > 50 {
+	if limit <= 0 {
 		limit = 8
+	}
+	if limit > 200 {
+		limit = 200
 	}
 	var orders []models.Order
 	err := r.db.Preload("Items").Preload("Hotel").

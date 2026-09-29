@@ -104,6 +104,25 @@ func migrateLegacy(db *gorm.DB) error {
 		}
 	}
 
+	if db.Migrator().HasTable(&models.Inquiry{}) {
+		inquirySteps := []string{
+			`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS submission_payload text`,
+			`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS assigned_to uuid`,
+			`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS converted_to_id uuid`,
+		}
+		for _, ddl := range inquirySteps {
+			if err := db.Exec(ddl).Error; err != nil {
+				return fmt.Errorf("legacy inquiry migration: %w", err)
+			}
+		}
+	}
+
+	if db.Migrator().HasTable(&models.BookingReferral{}) {
+		if err := db.Exec(`ALTER TABLE booking_referrals ADD COLUMN IF NOT EXISTS destination text`).Error; err != nil {
+			return fmt.Errorf("legacy booking referral destination: %w", err)
+		}
+	}
+
 	productSteps := []struct {
 		ddl      string
 		backfill string
@@ -167,6 +186,7 @@ func Migrate(db *gorm.DB) error {
 		&models.PayoutBatchItem{},
 		&models.EventLog{},
 		&models.InventoryReservation{},
+		&models.PaymentRefund{},
 		&models.RewardRule{},
 		&models.RewardLedgerEntry{},
 	)

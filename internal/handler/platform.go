@@ -47,11 +47,20 @@ func (h *PlatformHandler) AdminUpdateSettings(c *fiber.Ctx) error {
 func (h *PlatformHandler) SubmitGuestRequest(c *fiber.Ctx) error {
 	var req dto.SubmitGuestRequestRequest
 	if err := bindAndValidate(c, &req); err != nil {
-		return err
+		return response.Fail(c, err)
 	}
 	result, err := h.guestRequests.Submit(c.Params("slug"), req)
 	if err != nil {
 		return response.Fail(c, err)
 	}
 	return response.Created(c, result)
+}
+
+func (h *PlatformHandler) AdminListGuestRequests(c *fiber.Ctx) error {
+	status := c.Query("status")
+	result, err := h.guestRequests.List(status, 200)
+	if err != nil {
+		return response.Fail(c, err)
+	}
+	return response.OK(c, result)
 }

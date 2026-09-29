@@ -98,6 +98,9 @@ func (s *HotelService) PartnersLanding(catalogSlug string) (*dto.PartnersLanding
 		if hotel.Slug == "necha-demo" {
 			continue
 		}
+		if hotel.PartnerType != "" && hotel.PartnerType != models.PartnerTypeHotel {
+			continue
+		}
 		partnerCount++
 		partnerCards = append(partnerCards, dto.PartnerHotelCard{
 			Name:     hotel.Name,
@@ -106,11 +109,6 @@ func (s *HotelService) PartnersLanding(catalogSlug string) (*dto.PartnersLanding
 			Slug:     hotel.Slug,
 			LogoURL:  hotel.LogoURL,
 		})
-	}
-
-	taken := partnerCount
-	if taken > dto.FoundingCohortSize {
-		taken = dto.FoundingCohortSize
 	}
 
 	featured := []dto.ProductResponse{}
@@ -124,8 +122,9 @@ func (s *HotelService) PartnersLanding(catalogSlug string) (*dto.PartnersLanding
 	}
 
 	return &dto.PartnersLandingResponse{
-		FoundingSpotsTotal: dto.FoundingCohortSize,
-		FoundingSpotsTaken: taken,
+		// Scarcity counters are not published. Founding terms are agreed at countersignature.
+		FoundingSpotsTotal: 0,
+		FoundingSpotsTaken: 0,
 		PartnerHotels:      partnerCards,
 		FeaturedProducts:   featured,
 		ActiveHotelCount:   partnerCount,
@@ -263,6 +262,9 @@ func (s *HotelService) ListMenu(slug, menuKind string) (*dto.HotelMenuResponse, 
 		// Guest wellness page shows in-house requests and external/paid treatments together.
 		items, err = s.catalog.ListMenuItemsByKinds(hotel.ID, []string{"wellness", "wellness_paid"}, true)
 	} else {
+		if menuKind == "" {
+			menuKind = "food"
+		}
 		items, err = s.catalog.ListMenuItemsByKind(hotel.ID, menuKind, true)
 	}
 	if err != nil {

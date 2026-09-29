@@ -127,7 +127,7 @@ func main() {
 	reservationSvc := service.NewReservationService(hotelRepo, reservationRepo, eventSvc, guestStaySvc)
 
 	paymentSvc := service.NewPaymentService(cfg.Selcom, selcomClient, orderRepo, hotelRepo, discoveryRepo, eventSvc)
-	orderSvc := service.NewOrderService(hotelRepo, orderRepo, discoveryRepo, eventSvc, paymentSvc, guestStaySvc, platformSvc, influencerRepo, bookingReferralRepo, rewardRepo)
+	orderSvc := service.NewOrderService(hotelRepo, catalogRepo, orderRepo, discoveryRepo, eventSvc, paymentSvc, guestStaySvc, platformSvc, influencerRepo, bookingReferralRepo, rewardRepo)
 	adminSvc := service.NewAdminService(hotelRepo, catalogRepo, orderRepo, reservationRepo, eventSvc, guestStaySvc)
 	partnerSvc := service.NewPartnerService(userRepo, adminSvc, commissionRepo, guestStayRepo, hotelRepo, bookingReferralRepo)
 	inquirySvc := service.NewInquiryService(inquiryRepo, eventSvc, platformSvc)
@@ -151,7 +151,7 @@ func main() {
 		Messaging:      handler.NewMessagingHandler(notificationSvc, alertSvc, chatSvc, webhookSvc),
 		Inquiry:        handler.NewInquiryHandler(inquirySvc),
 		Platform:       handler.NewPlatformHandler(platformSvc, guestRequestSvc),
-		Payment:        handler.NewPaymentHandler(paymentSvc, cfg.Selcom),
+		Payment:        handler.NewPaymentHandler(paymentSvc, cfg.Selcom, commissionSvc),
 		Commerce:       handler.NewCommerceHandler(commerceSvc, payoutSvc, platformSvc),
 		Partner:        handler.NewPartnerHandler(partnerSvc, platformSvc),
 		JWT:            jwtMgr,

@@ -76,15 +76,18 @@ type OAuthConfig struct {
 }
 
 type SelcomConfig struct {
-	BaseURL        string
-	APIKey         string
-	APISecret      string
-	Vendor         string
-	WebhookSecret  string
-	PublicAPIURL   string
-	PublicAppURL   string
-	TimeoutSeconds int
-	MockMode       bool
+	BaseURL            string
+	APIKey             string
+	APISecret          string
+	Vendor             string
+	Pin                string
+	PayoutUtilityCode  string
+	PayoutMSISDN       string
+	WebhookSecret      string
+	PublicAPIURL       string
+	PublicAppURL       string
+	TimeoutSeconds     int
+	MockMode           bool
 }
 
 type KkooappConfig struct {
@@ -126,15 +129,18 @@ func Load() *Config {
 			AppleClientID:  getEnv("APPLE_CLIENT_ID", ""),
 		},
 		Selcom: SelcomConfig{
-			BaseURL:        getEnv("SELCOM_BASE_URL", "https://apigw.selcommobile.com"),
-			APIKey:         getEnv("SELCOM_API_KEY", ""),
-			APISecret:      getEnv("SELCOM_API_SECRET", ""),
-			Vendor:         getEnv("SELCOM_VENDOR", ""),
-			WebhookSecret:  getEnv("SELCOM_WEBHOOK_SECRET", ""),
-			PublicAPIURL:   getEnv("PUBLIC_API_URL", "http://localhost:8080"),
-			PublicAppURL:   getEnv("PUBLIC_APP_URL", "http://localhost:3000"),
-			TimeoutSeconds: parseInt(getEnv("SELCOM_TIMEOUT_SECONDS", "30")),
-			MockMode:       getEnv("SELCOM_MOCK", "") == "true",
+			BaseURL:           getEnv("SELCOM_BASE_URL", "https://apigw.selcommobile.com"),
+			APIKey:            getEnv("SELCOM_API_KEY", ""),
+			APISecret:         getEnv("SELCOM_API_SECRET", ""),
+			Vendor:            getEnv("SELCOM_VENDOR", ""),
+			Pin:               getEnv("SELCOM_PIN", ""),
+			PayoutUtilityCode: getEnv("SELCOM_PAYOUT_UTILITY_CODE", "CASHIN"),
+			PayoutMSISDN:      getEnv("SELCOM_PAYOUT_MSISDN", ""),
+			WebhookSecret:     getEnv("SELCOM_WEBHOOK_SECRET", ""),
+			PublicAPIURL:      getEnv("PUBLIC_API_URL", "http://localhost:8080"),
+			PublicAppURL:      getEnv("PUBLIC_APP_URL", "http://localhost:3000"),
+			TimeoutSeconds:    parseInt(getEnv("SELCOM_TIMEOUT_SECONDS", "30")),
+			MockMode:          getEnv("SELCOM_MOCK", "") == "true",
 		},
 		Kkooapp: KkooappConfig{
 			BaseURL:        getEnv("KKOOAPP_BASE_URL", "https://api.kkooapp.com/v1"),

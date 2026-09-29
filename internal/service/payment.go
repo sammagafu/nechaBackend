@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nechaafrica/backend/internal/config"
@@ -17,11 +18,16 @@ import (
 )
 
 const (
-	PaymentProviderSelcom   = "selcom"
-	PaymentStatusPending    = "pending"
-	PaymentStatusCompleted  = "completed"
-	PaymentStatusCancelled  = "cancelled"
-	PaymentStatusFailed     = "failed"
+	PaymentProviderSelcom     = "selcom"
+	PaymentProviderSelcomMock = "selcom_mock"
+	PaymentStatusPending      = "pending"
+	PaymentStatusCompleted    = "completed"
+	PaymentStatusCancelled    = "cancelled"
+	PaymentStatusFailed       = "failed"
+	PaymentStatusExpired      = "expired"
+	PaymentStatusRefunded     = "refunded"
+	PaymentStatusPartialRefund = "partially_refunded"
+	DemoPaymentDisclaimer     = "Demo payment — no money charged."
 )
 
 type PaymentService struct {
@@ -118,7 +124,13 @@ func (s *PaymentService) StartCheckout(ctx context.Context, input CheckoutInput)
 		return nil, err
 	}
 
-	input.Order.PaymentProvider = PaymentProviderSelcom
+	if s.isDemo() {
+		input.Order.PaymentProvider = PaymentProviderSelcomMock
+		input.Order.PaymentIsDemo = true
+	} else {
+		input.Order.PaymentProvider = PaymentProviderSelcom
+		input.Order.PaymentIsDemo = false
+	}
 	input.Order.PaymentStatus = PaymentStatusPending
 	input.Order.PaymentRef = result.Reference
 	if err := s.orders.Update(input.Order); err != nil {
@@ -129,7 +141,7 @@ func (s *PaymentService) StartCheckout(ctx context.Context, input CheckoutInput)
 		PaymentRequired: true,
 		PaymentURL:      result.PaymentGatewayURL,
 		PaymentStatus:   PaymentStatusPending,
-		PaymentProvider: PaymentProviderSelcom,
+		PaymentProvider: input.Order.PaymentProvider,
 	}, nil
 }
 
@@ -153,6 +165,12 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, payload selcom.Webho
 	}
 
 	previousStatus := string(order.Status)
+	if order.PaymentStatus == PaymentStatusCompleted && strings.EqualFold(payload.PaymentStatus, "COMPLETED") {
+		return nil
+	}
+	if orderNoLongerPayable(order) {
+		return apperrors.New(apperrors.ErrBadRequest.Code, "order is no longer payable", apperrors.ErrBadRequest.Status)
+	}
 	if payload.Amount != "" {
 		if amount, ok := selcom.ParseWebhookAmount(payload.Amount); ok && amount != order.TotalAmount {
 			return apperrors.New(apperrors.ErrBadRequest.Code, "payment amount mismatch", apperrors.ErrBadRequest.Status)
@@ -162,18 +180,16 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, payload selcom.Webho
 		return apperrors.New(apperrors.ErrBadRequest.Code, "payment reference mismatch", apperrors.ErrBadRequest.Status)
 	}
 
-	switch strings.ToUpper(payload.PaymentStatus) {
-	case "COMPLETED":
-		order.PaymentStatus = PaymentStatusCompleted
-		order.Status = models.OrderStatusConfirmed
-		if payload.Reference != "" {
-			order.PaymentRef = payload.Reference
-		}
-	case "CANCELLED", "USERCANCELED":
-		order.PaymentStatus = PaymentStatusCancelled
-		order.Status = models.OrderStatusCancelled
-	default:
-		order.PaymentStatus = PaymentStatusPending
+	paymentStatus, orderStatus, releaseStock := webhookPaymentOutcome(payload.PaymentStatus)
+	order.PaymentStatus = paymentStatus
+	if orderStatus != "" {
+		order.Status = models.OrderStatus(orderStatus)
+	}
+	if paymentStatus == PaymentStatusCompleted && payload.Reference != "" {
+		order.PaymentRef = payload.Reference
+	}
+	if releaseStock {
+		s.releaseHeldStock(order)
 	}
 
 	if err := s.orders.Update(order); err != nil {
@@ -202,6 +218,9 @@ func (s *PaymentService) CompleteMockPayment(ctx context.Context, orderID uuid.U
 	if order.PaymentStatus == PaymentStatusCompleted {
 		return order, nil
 	}
+	if orderNoLongerPayable(order) {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "order is no longer payable", apperrors.ErrBadRequest.Status)
+	}
 
 	hotel, err := s.hotels.FindByID(order.HotelID)
 	if err != nil {
@@ -211,6 +230,10 @@ func (s *PaymentService) CompleteMockPayment(ctx context.Context, orderID uuid.U
 	previousStatus := string(order.Status)
 	order.PaymentStatus = PaymentStatusCompleted
 	order.Status = models.OrderStatusConfirmed
+	order.PaymentIsDemo = true
+	if order.PaymentProvider == "" || order.PaymentProvider == PaymentProviderSelcom {
+		order.PaymentProvider = PaymentProviderSelcomMock
+	}
 	if err := s.orders.Update(order); err != nil {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to update order", apperrors.ErrInternal.Status)
 	}
@@ -246,16 +269,170 @@ func (s *PaymentService) finalizeDiscoveryTickets(order *models.Order) {
 	_ = s.discovery.IncrementTicketsSold(itemID, qty)
 }
 
-func (s *PaymentService) GetPaymentStatus(ctx context.Context, orderID uuid.UUID) (string, string, error) {
+func (s *PaymentService) GetPaymentStatus(ctx context.Context, orderID uuid.UUID) (string, string, bool, error) {
 	order, err := s.orders.FindByID(orderID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", "", apperrors.Wrap(err, apperrors.ErrNotFound.Code, "order not found", apperrors.ErrNotFound.Status)
+			return "", "", false, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "order not found", apperrors.ErrNotFound.Status)
 		}
-		return "", "", apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
+		return "", "", false, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
 	}
 
-	return order.PaymentStatus, string(order.Status), nil
+	return order.PaymentStatus, string(order.Status), order.PaymentIsDemo || s.isDemo(), nil
+}
+
+func (s *PaymentService) isDemo() bool {
+	return s.cfg.MockMode || strings.TrimSpace(s.cfg.APIKey) == "" || strings.TrimSpace(s.cfg.APISecret) == "" || strings.TrimSpace(s.cfg.Vendor) == ""
+}
+
+type RefundResult struct {
+	OrderID        string
+	Amount         int64
+	RefundedTotal  int64
+	PaymentStatus  string
+	Idempotent     bool
+	IsDemo         bool
+	Disclaimer     string
+	Order          *models.Order `json:"-"`
+}
+
+func (s *PaymentService) ApplyRefund(orderID uuid.UUID, amount int64, key, reason string) (*RefundResult, error) {
+	if amount <= 0 {
+		return nil, apperrors.New(apperrors.ErrValidation.Code, "refund amount must be greater than zero", apperrors.ErrValidation.Status)
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil, apperrors.New(apperrors.ErrValidation.Code, "idempotency key is required", apperrors.ErrValidation.Status)
+	}
+
+	order, err := s.orders.FindByID(orderID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "order not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
+	}
+	if order.PaymentStatus != PaymentStatusCompleted && order.PaymentStatus != PaymentStatusPartialRefund {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "only completed payments can be refunded", apperrors.ErrBadRequest.Status)
+	}
+
+	var existing models.PaymentRefund
+	if err := s.orders.DB().Where("idempotency_key = ?", key).First(&existing).Error; err == nil {
+		return &RefundResult{
+			OrderID:       order.ID.String(),
+			Amount:        existing.Amount,
+			RefundedTotal: order.RefundedAmount,
+			PaymentStatus: order.PaymentStatus,
+			Idempotent:    true,
+			IsDemo:        existing.IsDemo,
+			Disclaimer:    DemoPaymentDisclaimer,
+			Order:         order,
+		}, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load refund", apperrors.ErrInternal.Status)
+	}
+
+	remaining := order.TotalAmount - order.RefundedAmount
+	if amount > remaining {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "refund exceeds remaining captured amount", apperrors.ErrBadRequest.Status)
+	}
+
+	isDemo := order.PaymentIsDemo || s.isDemo()
+	refund := &models.PaymentRefund{
+		OrderID:        order.ID,
+		Amount:         amount,
+		IdempotencyKey: key,
+		Reason:         reason,
+		IsDemo:         isDemo,
+		Status:         "completed",
+	}
+	order.RefundedAmount += amount
+	if order.RefundedAmount >= order.TotalAmount {
+		order.PaymentStatus = PaymentStatusRefunded
+	} else {
+		order.PaymentStatus = PaymentStatusPartialRefund
+	}
+
+	if err := s.orders.DB().Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(refund).Error; err != nil {
+			return err
+		}
+		return tx.Save(order).Error
+	}); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to record refund", apperrors.ErrInternal.Status)
+	}
+
+	return &RefundResult{
+		OrderID:       order.ID.String(),
+		Amount:        amount,
+		RefundedTotal: order.RefundedAmount,
+		PaymentStatus: order.PaymentStatus,
+		IsDemo:        isDemo,
+		Disclaimer:    DemoPaymentDisclaimer,
+		Order:         order,
+	}, nil
+}
+
+func (s *PaymentService) CreateDemoReservation(itemID uuid.UUID, qty int, alreadyExpired bool) (*models.InventoryReservation, error) {
+	if qty <= 0 {
+		qty = 1
+	}
+	expires := time.Now().Add(15 * time.Minute)
+	if alreadyExpired {
+		expires = time.Now().Add(-1 * time.Minute)
+	}
+	res := &models.InventoryReservation{
+		CatalogueItemID: itemID,
+		Quantity:        qty,
+		Status:          models.InventoryReservationStatusActive,
+		ReservedAt:      time.Now(),
+		ExpiresAt:       expires,
+	}
+	if err := s.orders.DB().Create(res).Error; err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to create demo reservation", apperrors.ErrInternal.Status)
+	}
+	return res, nil
+}
+
+func (s *PaymentService) CountActiveReservations(itemID uuid.UUID) (int64, error) {
+	var n int64
+	err := s.orders.DB().Model(&models.InventoryReservation{}).
+		Where("catalogue_item_id = ? AND status = ?", itemID, models.InventoryReservationStatusActive).
+		Count(&n).Error
+	if err != nil {
+		return 0, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to count reservations", apperrors.ErrInternal.Status)
+	}
+	return n, nil
+}
+
+func (s *PaymentService) ExpireStaleReservations() (int, error) {
+	res := s.orders.DB().Model(&models.InventoryReservation{}).
+		Where("status = ? AND expires_at < ?", models.InventoryReservationStatusActive, time.Now()).
+		Update("status", models.InventoryReservationStatusExpired)
+	if res.Error != nil {
+		return 0, apperrors.Wrap(res.Error, apperrors.ErrInternal.Code, "failed to expire reservations", apperrors.ErrInternal.Status)
+	}
+	return int(res.RowsAffected), nil
+}
+
+func (s *PaymentService) ExpireHoldNow(orderID uuid.UUID) (*models.Order, error) {
+	order, err := s.orders.FindByID(orderID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.Wrap(err, apperrors.ErrNotFound.Code, "order not found", apperrors.ErrNotFound.Status)
+		}
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load order", apperrors.ErrInternal.Status)
+	}
+	if order.Status != models.OrderStatusPending || !order.StockHeld {
+		return nil, apperrors.New(apperrors.ErrBadRequest.Code, "order has no unpaid stock hold", apperrors.ErrBadRequest.Status)
+	}
+	s.releaseHeldStock(order)
+	order.Status = models.OrderStatusCancelled
+	order.PaymentStatus = PaymentStatusExpired
+	if err := s.orders.Update(order); err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to expire hold", apperrors.ErrInternal.Status)
+	}
+	return order, nil
 }
 
 func withOrderID(raw, orderID string) string {
@@ -274,10 +451,55 @@ func withOrderID(raw, orderID string) string {
 	return raw + sep + "order_id=" + orderID
 }
 
+func orderNoLongerPayable(order *models.Order) bool {
+	if order == nil {
+		return true
+	}
+	switch order.PaymentStatus {
+	case PaymentStatusCancelled, PaymentStatusFailed, PaymentStatusExpired, PaymentStatusRefunded:
+		return true
+	}
+	switch order.Status {
+	case models.OrderStatusCancelled, models.OrderStatusFailed:
+		return true
+	}
+	return false
+}
+
+func unpaidHoldCutoff(now time.Time) time.Time {
+	return now.Add(-15 * time.Minute)
+}
+
+func webhookPaymentOutcome(status string) (paymentStatus string, orderStatus models.OrderStatus, releaseStock bool) {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "COMPLETED":
+		return PaymentStatusCompleted, models.OrderStatusConfirmed, false
+	case "CANCELLED", "USERCANCELED":
+		return PaymentStatusCancelled, models.OrderStatusCancelled, true
+	case "FAILED", "REJECTED", "EXPIRED":
+		return PaymentStatusFailed, models.OrderStatusFailed, true
+	default:
+		return PaymentStatusPending, "", false
+	}
+}
+
 func fallbackEmail(email string) string {
 	email = strings.TrimSpace(email)
 	if email != "" {
 		return email
 	}
 	return "orders@necha.africa"
+}
+
+func (s *PaymentService) releaseHeldStock(order *models.Order) {
+	if order == nil || !order.StockHeld || s.hotels == nil {
+		return
+	}
+	for _, item := range order.Items {
+		if item.ProductID == nil || item.Quantity <= 0 {
+			continue
+		}
+		_ = s.hotels.RestoreProductStock(*item.ProductID, item.Quantity)
+	}
+	order.StockHeld = false
 }

@@ -65,9 +65,14 @@ type Order struct {
 	DeliveryAddress string `json:"delivery_address,omitempty"`
 	DeliveryCity    string `json:"delivery_city,omitempty"`
 	DeliveryCountry string `json:"delivery_country,omitempty"`
+	DeliveryFee     int64  `gorm:"default:0" json:"delivery_fee"`
+	// StockHeld is true while product stock was decremented as a payment hold.
+	StockHeld bool `gorm:"default:false" json:"stock_held"`
 	PaymentProvider string `json:"payment_provider,omitempty"`
 	PaymentStatus   string `json:"payment_status,omitempty"`
 	PaymentRef      string `gorm:"index" json:"payment_ref,omitempty"`
+	PaymentIsDemo   bool   `gorm:"default:false" json:"payment_is_demo"`
+	RefundedAmount  int64  `gorm:"default:0" json:"refunded_amount"`
 	// Commission classification + attribution, captured once at placement (brief §3.7).
 	Category     string `gorm:"index;default:product" json:"category"`
 	SalesChannel string `gorm:"index;default:hotel_storefront" json:"sales_channel"`

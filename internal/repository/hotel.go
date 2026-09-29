@@ -151,6 +151,15 @@ func (r *HotelRepository) DecrementProductStock(tx *gorm.DB, productID uuid.UUID
 	return nil
 }
 
+func (r *HotelRepository) RestoreProductStock(productID uuid.UUID, quantity int) error {
+	if quantity <= 0 {
+		return nil
+	}
+	return r.db.Model(&models.Product{}).
+		Where("id = ?", productID).
+		UpdateColumn("stock", gorm.Expr("stock + ?", quantity)).Error
+}
+
 func (r *HotelRepository) CreateProduct(product *models.Product) error {
 	return r.db.Create(product).Error
 }

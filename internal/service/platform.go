@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
@@ -35,14 +36,24 @@ func (s *PlatformService) Settings() (*dto.PlatformSettingsResponse, error) {
 		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to load delivery zones", apperrors.ErrInternal.Status)
 	}
 
+	foundingMonths := s.configInt64(models.ConfigKeyFoundingTierMonths, 13)
 	out := &dto.PlatformSettingsResponse{
 		TzsToUsdRate:             rate,
 		FreeDeliveryThresholdTZS: 180000,
 		DefaultDeliveryFeeTZS:    5000,
 		DeliveryBaseFeeTZS:       s.configInt64(models.ConfigKeyDeliveryBaseFeeTZS, 3000),
 		DeliveryPerKmTZS:         s.configInt64(models.ConfigKeyDeliveryPerKmTZS, 1000),
+		FoundingTierMonths:       foundingMonths,
+		DemoEnvironment:          isDemoEnvironment(),
 		Features:                 s.loadFeatures(),
-		Zones:                    make([]dto.DeliveryZoneResponse, 0, len(zones)),
+		Calculator: dto.CalculatorAssumptions{
+			FoundingTierMonths: foundingMonths,
+			AvgSpendTZS:        50000,
+			HotelPremiumRate:   0.13,
+			FoundingHotelShare: 0.5,
+			StandardHotelShare: 0.3,
+		},
+		Zones: make([]dto.DeliveryZoneResponse, 0, len(zones)),
 	}
 	for _, z := range zones {
 		out.Zones = append(out.Zones, dto.DeliveryZoneResponse{
@@ -182,14 +193,14 @@ func (s *PlatformService) configInt64(key string, defaultVal int64) int64 {
 
 func (s *PlatformService) loadFeatures() dto.PlatformFeatures {
 	return dto.PlatformFeatures{
-		RewardsEnabled:               s.FeatureEnabled(models.ConfigKeyFeatureRewardsEnabled, true),
-		RewardsRedeemEnabled:         s.FeatureEnabled(models.ConfigKeyFeatureRewardsRedeemEnabled, true),
+		RewardsEnabled:               s.FeatureEnabled(models.ConfigKeyFeatureRewardsEnabled, false),
+		RewardsRedeemEnabled:         s.FeatureEnabled(models.ConfigKeyFeatureRewardsRedeemEnabled, false),
 		DiscoveryTicketingEnabled:    s.FeatureEnabled(models.ConfigKeyFeatureDiscoveryTicketingEnabled, false),
 		PartnerPortalEnabled:         s.FeatureEnabled(models.ConfigKeyFeaturePartnerPortalEnabled, true),
 		PartnerProductsManageEnabled: s.FeatureEnabled(models.ConfigKeyFeaturePartnerProductsManageEnabled, false),
 		DualCurrencyEnabled:          s.FeatureEnabled(models.ConfigKeyFeatureDualCurrencyEnabled, true),
 		DistanceDeliveryEnabled:      s.FeatureEnabled(models.ConfigKeyFeatureDistanceDeliveryEnabled, true),
-		B2CShopEnabled:               s.FeatureEnabled(models.ConfigKeyFeatureB2CShopEnabled, true),
+		B2CShopEnabled:               s.FeatureEnabled(models.ConfigKeyFeatureB2CShopEnabled, false),
 	}
 }
 
@@ -277,14 +288,39 @@ func (s *GuestRequestService) Submit(slug string, req dto.SubmitGuestRequestRequ
 	if s.events != nil {
 		s.events.GuestRequestCreated(item, hotel.Name)
 	}
-	resp := toGuestRequestResponse(item)
+	resp := toGuestRequestResponse(item, hotel.Name)
 	return &resp, nil
 }
 
-func toGuestRequestResponse(item *models.GuestRequest) dto.GuestRequestResponse {
+func (s *GuestRequestService) List(status string, limit int) ([]dto.GuestRequestResponse, error) {
+	items, err := s.requests.ListAll(status, limit)
+	if err != nil {
+		return nil, apperrors.Wrap(err, apperrors.ErrInternal.Code, "failed to list guest requests", apperrors.ErrInternal.Status)
+	}
+	out := make([]dto.GuestRequestResponse, 0, len(items))
+	for i := range items {
+		name := ""
+		if hotel, herr := s.hotels.FindByID(items[i].HotelID); herr == nil {
+			name = hotel.Name
+		}
+		out = append(out, toGuestRequestResponse(&items[i], name))
+	}
+	return out, nil
+}
+
+func isDemoEnvironment() bool {
+	if os.Getenv("SELCOM_MOCK") == "true" {
+		return true
+	}
+	env := os.Getenv("APP_ENV")
+	return env == "" || env == "development" || env == "test" || env == "demo"
+}
+
+func toGuestRequestResponse(item *models.GuestRequest, hotelName string) dto.GuestRequestResponse {
 	return dto.GuestRequestResponse{
 		ID:         item.ID.String(),
 		HotelID:    item.HotelID.String(),
+		HotelName:  hotelName,
 		Category:   item.Category,
 		Status:     item.Status,
 		GuestName:  item.GuestName,

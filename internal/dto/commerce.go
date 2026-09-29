@@ -33,6 +33,7 @@ type CreateBookingReferralRequest struct {
 	TravellerName        string `json:"traveller_name" validate:"required"`
 	TravellerPhone       string `json:"traveller_phone" validate:"required"`
 	TravellerEmail       string `json:"traveller_email"`
+	Destination          string `json:"destination"`
 	TripStartDate        string `json:"trip_start_date"`
 	TripEndDate          string `json:"trip_end_date"`
 	TripContext          string `json:"trip_context"`

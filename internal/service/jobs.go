@@ -64,6 +64,11 @@ func (s *MaintenanceService) RunOnce() {
 	} else if n > 0 {
 		log.Printf("maintenance: expired %d stale inventory reservation(s)", n)
 	}
+	if n, err := s.ExpireUnpaidProductHolds(time.Now()); err != nil {
+		log.Printf("maintenance: unpaid product hold sweep failed: %v", err)
+	} else if n > 0 {
+		log.Printf("maintenance: released stock for %d expired unpaid product order(s)", n)
+	}
 }
 
 // foundingTierMonths reads the configurable tier window, defaulting to 14 months (brief §4.2).
@@ -122,4 +127,37 @@ func (s *MaintenanceService) ExpireInventoryReservations(now time.Time) (int, er
 		return 0, res.Error
 	}
 	return int(res.RowsAffected), nil
+}
+
+// ExpireUnpaidProductHolds cancels pending product orders whose payment never completed
+// and restores the stock hold (brief §2.4 / §3.14).
+func (s *MaintenanceService) ExpireUnpaidProductHolds(now time.Time) (int, error) {
+	cutoff := unpaidHoldCutoff(now)
+	var orders []models.Order
+	if err := s.db.Preload("Items").
+		Where("type = ? AND status = ? AND stock_held = ? AND created_at < ?",
+			models.OrderTypeProduct, models.OrderStatusPending, true, cutoff).
+		Find(&orders).Error; err != nil {
+		return 0, err
+	}
+	released := 0
+	for i := range orders {
+		order := &orders[i]
+		for _, item := range order.Items {
+			if item.ProductID == nil || item.Quantity <= 0 {
+				continue
+			}
+			if err := s.hotels.RestoreProductStock(*item.ProductID, item.Quantity); err != nil {
+				return released, err
+			}
+		}
+		order.StockHeld = false
+		order.Status = models.OrderStatusCancelled
+		order.PaymentStatus = "expired"
+		if err := s.db.Save(order).Error; err != nil {
+			return released, err
+		}
+		released++
+	}
+	return released, nil
 }

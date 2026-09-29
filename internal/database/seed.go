@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nechaafrica/backend/internal/domain/models"
+	"github.com/nechaafrica/backend/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -27,6 +28,9 @@ func Seed(db *gorm.DB, seedDemoUsers bool) error {
 		return err
 	}
 	if err := seedDiscovery(db); err != nil {
+		return err
+	}
+	if err := seedHotelMenus(db); err != nil {
 		return err
 	}
 	if err := seedAdmin(db, seedDemoUsers); err != nil {
@@ -722,4 +726,88 @@ func ensureUser(db *gorm.DB, seed seedUser) error {
 		}
 	}
 	return db.Create(&user).Error
+}
+
+func hotelHasService(hotel models.Hotel, name string) bool {
+	for _, s := range hotel.Services {
+		if s == name {
+			return true
+		}
+	}
+	return false
+}
+
+func seedHotelMenus(db *gorm.DB) error {
+	var hotels []models.Hotel
+	if err := db.Find(&hotels).Error; err != nil {
+		return err
+	}
+	catalog := repository.NewHotelCatalogRepository(db)
+	foodItems := []models.HotelMenuItem{
+		{Slug: "tropical-fruit-bowl", Category: "breakfast", Name: "Tropical fruit bowl", Description: "Seasonal mango, papaya & passion fruit with mint.", Price: 18000, Tag: "Light", MenuKind: "food", SortOrder: 1},
+		{Slug: "swahili-coconut-pancakes", Category: "breakfast", Name: "Swahili coconut pancakes", Description: "Mkate wa sinia with honey butter & cardamom.", Price: 22000, MenuKind: "food", SortOrder: 2},
+		{Slug: "grilled-tilapia-ugali", Category: "mains", Name: "Grilled tilapia & ugali", Description: "Lake fish, kachumbari, lemon herb butter.", Price: 38000, Tag: "Chef pick", MenuKind: "food", SortOrder: 3},
+		{Slug: "chicken-pilau", Category: "mains", Name: "Chicken pilau", Description: "Fragrant rice, sukuma, house chilli relish.", Price: 32000, MenuKind: "food", SortOrder: 4},
+		{Slug: "fresh-passion-juice", Category: "drinks", Name: "Fresh passion juice", Description: "Pressed to order, lightly sweetened.", Price: 8000, MenuKind: "food", SortOrder: 5},
+		{Slug: "dawa-cocktail", Category: "drinks", Name: "Dawa cocktail", Description: "Vodka, honey, lime and crushed ice.", Price: 16000, Tag: "Bar", MenuKind: "food", SortOrder: 6},
+	}
+	wellnessItems := []models.HotelMenuItem{
+		{Slug: "inhouse-swedish-massage", Category: "massage", Name: "Hotel spa massage", Description: "60-minute Swedish massage in the hotel spa.", Price: 85000, Tag: "In-house", MenuKind: "wellness", SortOrder: 1},
+		{Slug: "inhouse-manicure", Category: "beauty", Name: "Manicure", Description: "Classic manicure at the hotel salon.", Price: 35000, Tag: "In-house", MenuKind: "wellness", SortOrder: 2},
+		{Slug: "external-hammam", Category: "ritual", Name: "External hammam ritual", Description: "Partner hammam a short drive from the hotel.", Price: 120000, Tag: "External", MenuKind: "wellness_paid", SortOrder: 3},
+		{Slug: "external-yoga", Category: "movement", Name: "Sunrise yoga on the beach", Description: "External instructor, paid through Necha.", Price: 45000, Tag: "External", MenuKind: "wellness_paid", SortOrder: 4},
+	}
+	foodCats := []models.HotelCategory{
+		{Slug: "breakfast", Label: "Breakfast", Kind: models.CategoryKindMenu, SortOrder: 1},
+		{Slug: "mains", Label: "Mains", Kind: models.CategoryKindMenu, SortOrder: 2},
+		{Slug: "drinks", Label: "Drinks", Kind: models.CategoryKindMenu, SortOrder: 3},
+	}
+	wellnessCats := []models.HotelCategory{
+		{Slug: "massage", Label: "Massage", Kind: models.CategoryKindMenu, SortOrder: 10},
+		{Slug: "beauty", Label: "Beauty", Kind: models.CategoryKindMenu, SortOrder: 11},
+		{Slug: "ritual", Label: "Rituals", Kind: models.CategoryKindMenu, SortOrder: 12},
+		{Slug: "movement", Label: "Movement", Kind: models.CategoryKindMenu, SortOrder: 13},
+	}
+
+	for _, hotel := range hotels {
+		if hotelHasService(hotel, "restaurant") || hotelHasService(hotel, "bar") {
+			for _, cat := range foodCats {
+				row := cat
+				row.HotelID = hotel.ID
+				row.IsActive = true
+				if err := db.Where("hotel_id = ? AND slug = ? AND kind = ?", hotel.ID, row.Slug, row.Kind).FirstOrCreate(&row).Error; err != nil {
+					return err
+				}
+			}
+			for _, item := range foodItems {
+				row := item
+				row.HotelID = hotel.ID
+				row.Currency = "TZS"
+				row.IsActive = true
+				if _, err := catalog.UpsertMenuItem(&row); err != nil {
+					return err
+				}
+			}
+		}
+		if hotelHasService(hotel, "spa") {
+			for _, cat := range wellnessCats {
+				row := cat
+				row.HotelID = hotel.ID
+				row.IsActive = true
+				if err := db.Where("hotel_id = ? AND slug = ? AND kind = ?", hotel.ID, row.Slug, row.Kind).FirstOrCreate(&row).Error; err != nil {
+					return err
+				}
+			}
+			for _, item := range wellnessItems {
+				row := item
+				row.HotelID = hotel.ID
+				row.Currency = "TZS"
+				row.IsActive = true
+				if _, err := catalog.UpsertMenuItem(&row); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
