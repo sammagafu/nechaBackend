@@ -121,6 +121,12 @@ func (r *SupplierRepository) FindByNameAndType(name, supplierType string) (*mode
 	return &m, nil
 }
 
+func (r *SupplierRepository) List() ([]models.Supplier, error) {
+	var out []models.Supplier
+	err := r.db.Order("created_at DESC").Find(&out).Error
+	return out, err
+}
+
 // CatalogueRepository --------------------------------------------------------
 
 type CatalogueRepository struct {
