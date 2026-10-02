@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/nechaafrica/backend/internal/domain/models"
 	"gorm.io/gorm"
@@ -166,4 +168,96 @@ func (r *HotelRepository) CreateProduct(product *models.Product) error {
 
 func (r *HotelRepository) UpdateProduct(product *models.Product) error {
 	return r.db.Save(product).Error
+}
+
+func (r *HotelRepository) ListProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error) {
+	var products []models.Product
+	err := r.db.Preload("Hotel").
+		Where("supplier_id = ?", supplierID).
+		Order("name ASC, hotel_id ASC").
+		Find(&products).Error
+	return products, err
+}
+
+func (r *HotelRepository) FindProductByIDForSupplier(productID, supplierID uuid.UUID) (*models.Product, error) {
+	var product models.Product
+	err := r.db.Preload("Hotel").
+		Where("id = ? AND supplier_id = ?", productID, supplierID).
+		First(&product).Error
+	if err != nil {
+		return nil, err
+	}
+	return &product, nil
+}
+
+// SupplierSalesBySKU aggregates paid order lines for a supplier's products (last N days).
+func (r *HotelRepository) SupplierSalesBySKU(supplierID uuid.UUID, since time.Time, limit int) ([]SupplierSKUAgg, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	var rows []SupplierSKUAgg
+	err := r.db.Raw(`
+		SELECT p.id AS product_id, p.name AS product_name, p.slug, p.currency,
+			COALESCE(SUM(oi.quantity), 0)::int AS units_sold,
+			COALESCE(SUM(oi.total_price), 0)::bigint AS revenue
+		FROM products p
+		LEFT JOIN order_items oi ON oi.product_id = p.id
+		LEFT JOIN orders o ON o.id = oi.order_id
+			AND o.status NOT IN ('pending', 'cancelled', 'failed')
+			AND o.created_at >= ?
+		WHERE p.supplier_id = ?
+		GROUP BY p.id, p.name, p.slug, p.currency
+		HAVING COALESCE(SUM(oi.quantity), 0) > 0
+		ORDER BY revenue DESC
+		LIMIT ?
+	`, since, supplierID, limit).Scan(&rows).Error
+	return rows, err
+}
+
+type SupplierSKUAgg struct {
+	ProductID   uuid.UUID
+	ProductName string
+	Slug        string
+	Currency    string
+	UnitsSold   int
+	Revenue     int64
+}
+
+// ListSupplierOrderLines returns recent order lines for products owned by a supplier.
+func (r *HotelRepository) ListSupplierOrderLines(supplierID uuid.UUID, limit int) ([]SupplierOrderLineRow, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	var rows []SupplierOrderLineRow
+	err := r.db.Raw(`
+		SELECT o.id AS order_id, o.kkooapp_ref AS order_ref, o.status AS order_status,
+			h.name AS hotel_name, o.customer_name, o.customer_phone, o.room_number,
+			p.id AS product_id, oi.name AS product_name, oi.quantity, oi.unit_price,
+			oi.total_price, o.currency, o.created_at
+		FROM order_items oi
+		JOIN orders o ON o.id = oi.order_id
+		JOIN products p ON p.id = oi.product_id
+		JOIN hotels h ON h.id = o.hotel_id
+		WHERE p.supplier_id = ?
+		ORDER BY o.created_at DESC
+		LIMIT ?
+	`, supplierID, limit).Scan(&rows).Error
+	return rows, err
+}
+
+type SupplierOrderLineRow struct {
+	OrderID       uuid.UUID
+	OrderRef      string
+	OrderStatus   string
+	HotelName     string
+	CustomerName  string
+	CustomerPhone string
+	RoomNumber    string
+	ProductID     uuid.UUID
+	ProductName   string
+	Quantity      int
+	UnitPrice     int64
+	TotalPrice    int64
+	Currency      string
+	CreatedAt     time.Time
 }

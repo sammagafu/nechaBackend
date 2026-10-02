@@ -7,14 +7,22 @@ import (
 
 func seedPlatformDefaults(db *gorm.DB) error {
 	zones := []models.DeliveryZone{
-		{Code: "A", Label: "Zone A — City Centre", DeliveryFeeTZS: 5000, FreeThresholdTZS: 180000, SortOrder: 1, IsActive: true},
-		{Code: "B", Label: "Zone B — Masaki & Oyster Bay", DeliveryFeeTZS: 5000, FreeThresholdTZS: 180000, SortOrder: 2, IsActive: true},
+		{Code: "A", Label: "Zone A — Mbezi Beach", DeliveryFeeTZS: 8000, FreeThresholdTZS: 180000, SortOrder: 1, IsActive: true},
+		{Code: "B", Label: "Zone B — Kunduchi", DeliveryFeeTZS: 5000, FreeThresholdTZS: 180000, SortOrder: 2, IsActive: true},
 		{Code: "C", Label: "Zone C — Mikocheni & Upanga", DeliveryFeeTZS: 7000, FreeThresholdTZS: 180000, SortOrder: 3, IsActive: true},
-		{Code: "D", Label: "Zone D — Mbezi & Tegeta", DeliveryFeeTZS: 8000, FreeThresholdTZS: 180000, SortOrder: 4, IsActive: true},
+		{Code: "D", Label: "Zone D — City Centre", DeliveryFeeTZS: 5000, FreeThresholdTZS: 180000, SortOrder: 4, IsActive: true},
+		{Code: "E", Label: "Zone E — Oysterbay / Masaki", DeliveryFeeTZS: 5000, FreeThresholdTZS: 180000, SortOrder: 5, IsActive: true},
+		{Code: "F", Label: "Zone F — Airport", DeliveryFeeTZS: 10000, FreeThresholdTZS: 180000, SortOrder: 6, IsActive: true},
 	}
 	for _, z := range zones {
 		var existing models.DeliveryZone
 		if err := db.Where("code = ?", z.Code).First(&existing).Error; err == nil {
+			// Keep fees if already configured; always align labels with hotel zone codes.
+			if existing.Label != z.Label {
+				if err := db.Model(&existing).Update("label", z.Label).Error; err != nil {
+					return err
+				}
+			}
 			continue
 		}
 		if err := db.Create(&z).Error; err != nil {
@@ -47,7 +55,7 @@ func seedPlatformDefaults(db *gorm.DB) error {
 		models.ConfigKeyFeatureRewardsRedeemEnabled:         "false",
 		models.ConfigKeyFeatureDiscoveryTicketingEnabled:    "false",
 		models.ConfigKeyFeaturePartnerPortalEnabled:         "true",
-		models.ConfigKeyFeaturePartnerProductsManageEnabled: "false",
+		models.ConfigKeyFeaturePartnerProductsManageEnabled: "true",
 		models.ConfigKeyFeatureDualCurrencyEnabled:          "true",
 		models.ConfigKeyFeatureDistanceDeliveryEnabled:      "true",
 		models.ConfigKeyFeatureB2CShopEnabled:               "false",
@@ -59,6 +67,12 @@ func seedPlatformDefaults(db *gorm.DB) error {
 				return err
 			}
 		}
+	}
+	// Deferred Phase 3 gap: property product/menu self-service was built but left off.
+	if err := db.Model(&models.PlatformConfig{}).
+		Where("key = ?", models.ConfigKeyFeaturePartnerProductsManageEnabled).
+		Update("value", "true").Error; err != nil {
+		return err
 	}
 
 	var reward models.RewardRule

@@ -15,6 +15,9 @@ const (
 	// UserRolePartner is a property/partner staff member with access to their own
 	// property dashboard only (brief §11) — never the platform-wide Necha admin.
 	UserRolePartner UserRole = "partner"
+	// UserRoleSupplier is a brand / tour operator / event organiser / external spa
+	// staff member scoped to a single Supplier row (brief §11.3, Phase 3).
+	UserRoleSupplier UserRole = "supplier"
 )
 
 type AuthProvider string
@@ -35,9 +38,11 @@ type User struct {
 	AuthProvider AuthProvider `gorm:"not null;default:email" json:"auth_provider"`
 	ProviderID   string       `gorm:"index" json:"-"`
 	// HotelID scopes a partner-role user to a single property (row-level tenancy).
-	HotelID   *uuid.UUID `gorm:"type:uuid;index" json:"hotel_id,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	HotelID *uuid.UUID `gorm:"type:uuid;index" json:"hotel_id,omitempty"`
+	// SupplierID scopes a supplier-role user to a single Supplier (brief §11.3).
+	SupplierID *uuid.UUID `gorm:"type:uuid;index" json:"supplier_id,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) error {

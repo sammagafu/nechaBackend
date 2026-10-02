@@ -13,6 +13,7 @@ const (
 	RoleCustomer Role = "customer"
 	RoleAdmin    Role = "admin"
 	RolePartner  Role = "partner"
+	RoleSupplier Role = "supplier"
 )
 
 type Claims struct {

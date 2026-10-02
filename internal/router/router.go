@@ -28,6 +28,7 @@ type Handlers struct {
 	Payment        *handler.PaymentHandler
 	Commerce       *handler.CommerceHandler
 	Partner        *handler.PartnerHandler
+	Supplier       *handler.SupplierPortalHandler
 	JWT            *jwtmanager.Manager
 	AllowedOrigins string
 	DB             *gorm.DB
@@ -219,4 +220,11 @@ func Setup(app *fiber.App, h Handlers) {
 	partner.Patch("/settings", h.Partner.UpdateSettings)
 	partner.Get("/referrals", h.Partner.ListReferrals)
 	partner.Post("/referrals", h.Partner.CreateReferral)
+
+	supplier := api.Group("/supplier", middleware.Auth(h.JWT), middleware.RequireSupplier())
+	supplier.Get("/dashboard", h.Supplier.Dashboard)
+	supplier.Get("/products", h.Supplier.ListProducts)
+	supplier.Patch("/products/:id", h.Supplier.UpdateProduct)
+	supplier.Get("/orders", h.Supplier.ListOrders)
+	supplier.Get("/sales", h.Supplier.Sales)
 }

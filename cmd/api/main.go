@@ -130,6 +130,7 @@ func main() {
 	orderSvc := service.NewOrderService(hotelRepo, catalogRepo, orderRepo, discoveryRepo, eventSvc, paymentSvc, guestStaySvc, platformSvc, influencerRepo, bookingReferralRepo, rewardRepo)
 	adminSvc := service.NewAdminService(hotelRepo, catalogRepo, orderRepo, reservationRepo, eventSvc, guestStaySvc)
 	partnerSvc := service.NewPartnerService(userRepo, adminSvc, commissionRepo, guestStayRepo, hotelRepo, bookingReferralRepo)
+	supplierPortalSvc := service.NewSupplierPortalService(userRepo, supplierRepo, hotelRepo)
 	inquirySvc := service.NewInquiryService(inquiryRepo, eventSvc, platformSvc)
 	guestRequestSvc := service.NewGuestRequestService(guestRequestRepo, hotelRepo, eventSvc)
 
@@ -154,6 +155,7 @@ func main() {
 		Payment:        handler.NewPaymentHandler(paymentSvc, cfg.Selcom, commissionSvc),
 		Commerce:       handler.NewCommerceHandler(commerceSvc, payoutSvc, platformSvc),
 		Partner:        handler.NewPartnerHandler(partnerSvc, platformSvc),
+		Supplier:       handler.NewSupplierPortalHandler(supplierPortalSvc),
 		JWT:            jwtMgr,
 		AllowedOrigins: cfg.Server.AllowedOrigin,
 		DB:             db,

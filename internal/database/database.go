@@ -132,6 +132,7 @@ func migrateLegacy(db *gorm.DB) error {
 		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS badge text`, ``},
 		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_featured boolean DEFAULT false`, `UPDATE products SET is_featured = false WHERE is_featured IS NULL`},
 		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS images jsonb DEFAULT '[]'`, `UPDATE products SET images = '[]' WHERE images IS NULL`},
+		{`ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier_id uuid`, ``},
 	}
 
 	for _, step := range productSteps {
@@ -142,6 +143,12 @@ func migrateLegacy(db *gorm.DB) error {
 			if err := db.Exec(step.backfill).Error; err != nil {
 				return fmt.Errorf("legacy product backfill: %w", err)
 			}
+		}
+	}
+
+	if db.Migrator().HasTable(&models.User{}) {
+		if err := db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS supplier_id uuid`).Error; err != nil {
+			return fmt.Errorf("legacy user supplier_id migration: %w", err)
 		}
 	}
 

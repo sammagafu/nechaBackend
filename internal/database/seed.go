@@ -33,6 +33,9 @@ func Seed(db *gorm.DB, seedDemoUsers bool) error {
 	if err := seedHotelMenus(db); err != nil {
 		return err
 	}
+	if err := seedBrandSupplier(db); err != nil {
+		return err
+	}
 	if err := seedAdmin(db, seedDemoUsers); err != nil {
 		return err
 	}
@@ -142,6 +145,7 @@ func partnerSeedHotels() []models.Hotel {
 			Description: "Business and leisure hotel on the Kivukoni waterfront.",
 			Address: "Kivukoni Front", City: "Dar es Salaam", Location: "City Centre", Country: "Tanzania", Zone: "D",
 			Phone: "+255222113344", Initials: "HY", LogoURL: "", ReferralCode: "HYATT24",
+			GoogleMapsURL: "https://www.google.com/maps/search/?api=1&query=Hyatt+Regency+Dar+es+Salaam+Kivukoni+Front",
 			Services: models.StringSlice{"spa", "restaurant", "bar", "gym", "discover"}, IsVerified: true,
 			KkooappID: "kkoo-prop-hyatt-001", IsActive: true,
 		},
@@ -195,8 +199,15 @@ func ensureHotel(db *gorm.DB, seed models.Hotel) error {
 	var existing models.Hotel
 	err := db.Where("slug = ?", seed.Slug).First(&existing).Error
 	if err == nil {
+		updates := map[string]interface{}{}
 		if existing.LogoURL == "/necha-logo.png" || existing.LogoURL == "/logo.svg" {
-			if err := db.Model(&existing).Update("logo_url", seed.LogoURL).Error; err != nil {
+			updates["logo_url"] = seed.LogoURL
+		}
+		if existing.GoogleMapsURL == "" && seed.GoogleMapsURL != "" {
+			updates["google_maps_url"] = seed.GoogleMapsURL
+		}
+		if len(updates) > 0 {
+			if err := db.Model(&existing).Updates(updates).Error; err != nil {
 				return err
 			}
 		}
@@ -209,6 +220,35 @@ func ensureHotel(db *gorm.DB, seed models.Hotel) error {
 		return err
 	}
 	return createCatalogProducts(db, seed.ID)
+}
+
+// seedBrandSupplier creates the NECHA NATURALS brand supplier, links storefront
+// products, and (when demo users are seeded) a supplier portal login.
+func seedBrandSupplier(db *gorm.DB) error {
+	var supplier models.Supplier
+	err := db.Where("LOWER(name) = LOWER(?) AND supplier_type = ?", "NECHA NATURALS", models.SupplierTypeBrand).
+		First(&supplier).Error
+	if err == gorm.ErrRecordNotFound {
+		supplier = models.Supplier{
+			SupplierType: models.SupplierTypeBrand,
+			Name:         "NECHA NATURALS",
+			ContactEmail: "supplier@necha.africa",
+			ContactPhone: "+255700000005",
+			IsActive:     true,
+		}
+		if err := db.Create(&supplier).Error; err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	if err := db.Model(&models.Product{}).
+		Where("UPPER(brand_name) = ? AND supplier_id IS NULL", "NECHA NATURALS").
+		Update("supplier_id", supplier.ID).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 type seedProduct struct {
@@ -607,12 +647,13 @@ func syncDiscoveryImages(db *gorm.DB) error {
 }
 
 type seedUser struct {
-	Email     string
-	Password  string
-	FullName  string
-	Phone     string
-	Role      models.UserRole
-	HotelSlug string
+	Email        string
+	Password     string
+	FullName     string
+	Phone        string
+	Role         models.UserRole
+	HotelSlug    string
+	SupplierName string
 }
 
 func seedAdmin(db *gorm.DB, allowDefaults bool) error {
@@ -670,6 +711,14 @@ func seedTestUsers(db *gorm.DB) error {
 			Role:      models.UserRolePartner,
 			HotelSlug: "safari-tours-tz",
 		},
+		{
+			Email:        envOr("DEMO_SUPPLIER_EMAIL", "supplier@necha.africa"),
+			Password:     envOr("DEMO_SUPPLIER_PASSWORD", "supplier12345"),
+			FullName:     "Necha Naturals Supplier",
+			Phone:        "+255700000005",
+			Role:         models.UserRoleSupplier,
+			SupplierName: "NECHA NATURALS",
+		},
 	}
 	for _, user := range users {
 		if err := ensureUser(db, user); err != nil {
@@ -687,12 +736,31 @@ func envOr(key, fallback string) string {
 }
 
 func ensureUser(db *gorm.DB, seed seedUser) error {
-	var count int64
-	if err := db.Model(&models.User{}).Where("email = ?", seed.Email).Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
+	var existing models.User
+	err := db.Where("email = ?", seed.Email).First(&existing).Error
+	if err == nil {
+		updates := map[string]interface{}{}
+		if seed.SupplierName != "" && existing.SupplierID == nil {
+			var supplier models.Supplier
+			if err := db.Where("LOWER(name) = LOWER(?) AND supplier_type = ?", seed.SupplierName, models.SupplierTypeBrand).
+				First(&supplier).Error; err == nil {
+				updates["supplier_id"] = supplier.ID
+				updates["role"] = models.UserRoleSupplier
+			}
+		}
+		if seed.HotelSlug != "" && existing.HotelID == nil {
+			var hotel models.Hotel
+			if err := db.Where("slug = ?", seed.HotelSlug).First(&hotel).Error; err == nil {
+				updates["hotel_id"] = hotel.ID
+			}
+		}
+		if len(updates) > 0 {
+			return db.Model(&existing).Updates(updates).Error
+		}
 		return nil
+	}
+	if err != gorm.ErrRecordNotFound {
+		return err
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(seed.Password), bcrypt.DefaultCost)
@@ -723,6 +791,13 @@ func ensureUser(db *gorm.DB, seed seedUser) error {
 					return err
 				}
 			}
+		}
+	}
+	if seed.SupplierName != "" {
+		var supplier models.Supplier
+		if err := db.Where("LOWER(name) = LOWER(?) AND supplier_type = ?", seed.SupplierName, models.SupplierTypeBrand).
+			First(&supplier).Error; err == nil {
+			user.SupplierID = &supplier.ID
 		}
 	}
 	return db.Create(&user).Error

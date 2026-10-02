@@ -123,5 +123,9 @@ func toUserResponse(u *models.User) dto.UserResponse {
 		hid := u.HotelID.String()
 		resp.HotelID = &hid
 	}
+	if u.SupplierID != nil {
+		sid := u.SupplierID.String()
+		resp.SupplierID = &sid
+	}
 	return resp
 }

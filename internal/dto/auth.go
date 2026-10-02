@@ -26,6 +26,7 @@ type UserResponse struct {
 	Role         string  `json:"role"`
 	AuthProvider string  `json:"auth_provider"`
 	HotelID      *string `json:"hotel_id,omitempty"`
+	SupplierID   *string `json:"supplier_id,omitempty"`
 }
 
 type SocialLoginRequest struct {

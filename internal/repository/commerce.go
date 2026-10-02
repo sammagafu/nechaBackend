@@ -113,10 +113,12 @@ func (r *SupplierRepository) FindByID(id uuid.UUID) (*models.Supplier, error) {
 	return &m, nil
 }
 
-func (r *SupplierRepository) List() ([]models.Supplier, error) {
-	var out []models.Supplier
-	err := r.db.Order("created_at DESC").Find(&out).Error
-	return out, err
+func (r *SupplierRepository) FindByNameAndType(name, supplierType string) (*models.Supplier, error) {
+	var m models.Supplier
+	if err := r.db.Where("LOWER(name) = LOWER(?) AND supplier_type = ?", name, supplierType).First(&m).Error; err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 // CatalogueRepository --------------------------------------------------------

@@ -68,3 +68,14 @@ func RequirePartner() fiber.Handler {
 		return c.Next()
 	}
 }
+
+// RequireSupplier allows brand/operator staff scoped to their own supplier (brief §11.3).
+func RequireSupplier() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		role, _ := c.Locals("user_role").(string)
+		if role != string(jwtmanager.RoleSupplier) && role != string(jwtmanager.RoleAdmin) {
+			return response.Fail(c, apperrors.ErrForbidden)
+		}
+		return c.Next()
+	}
+}

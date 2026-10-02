@@ -19,13 +19,15 @@ type Product struct {
 	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	HotelID     uuid.UUID `gorm:"type:uuid;not null;index" json:"hotel_id"`
 	Hotel       Hotel     `gorm:"foreignKey:HotelID" json:"-"`
-	Slug        string    `gorm:"index" json:"slug"`
-	BrandName   string    `json:"brand_name"`
-	Name        string    `gorm:"not null" json:"name"`
-	Description string    `json:"description"`
-	Category    string    `gorm:"not null;index" json:"category"`
-	Badge       string    `json:"badge"`
-	Price       int64     `gorm:"not null" json:"price"`
+	// SupplierID links a storefront SKU to its brand/supplier for supplier self-service (brief §11.3).
+	SupplierID  *uuid.UUID `gorm:"type:uuid;index" json:"supplier_id,omitempty"`
+	Slug        string     `gorm:"index" json:"slug"`
+	BrandName   string     `json:"brand_name"`
+	Name        string     `gorm:"not null" json:"name"`
+	Description string     `json:"description"`
+	Category    string     `gorm:"not null;index" json:"category"`
+	Badge       string     `json:"badge"`
+	Price       int64      `gorm:"not null" json:"price"`
 	Currency    string      `gorm:"not null;default:TZS" json:"currency"`
 	ImageURL    string      `json:"image_url"`
 	Images      StringSlice `gorm:"type:jsonb" json:"images"`
